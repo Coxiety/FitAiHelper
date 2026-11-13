@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { authApi } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { BackgroundSettingsButton } from "./BackgroundLayer";
+
+let meSyncedInSession = false;
 
 interface PetalNavItem {
   id: string;
@@ -163,6 +166,8 @@ export function AppHeader() {
     if (!hydrated) return;
     const rawToken = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
     if (!isAuthenticated && !rawToken) return;
+    if (meSyncedInSession && user) return;
+    meSyncedInSession = true;
     authApi
       .me()
       .then((me) => {
@@ -170,8 +175,20 @@ export function AppHeader() {
         const activeToken = token || rawToken;
         if (activeToken) setAuth(me, activeToken);
       })
-      .catch(() => {});
-  }, [hydrated, isAuthenticated]);
+      .catch(() => {
+        meSyncedInSession = false;
+      });
+  }, [hydrated, isAuthenticated, user]);
+
+  // Prefetch tất cả các trang trong vòng tròn điều hướng để chuyển trang tức thì
+  useEffect(() => {
+    if (!hydrated) return;
+    const allRoutes =
+      user?.role === "admin" ? [...BASE_PETALS, ADMIN_PETAL] : BASE_PETALS;
+    allRoutes.forEach((p) => {
+      router.prefetch(p.href);
+    });
+  }, [hydrated, user?.role, router]);
 
   useEffect(() => {
     if (!open) return;
@@ -187,12 +204,8 @@ export function AppHeader() {
 
   const currentItem = petals.find((p) => isActive(pathname, p.href));
 
-  const handleNavigate = (href: string) => {
-    setOpen(false);
-    router.push(href);
-  };
-
   const handleLogout = () => {
+    meSyncedInSession = false;
     setOpen(false);
     logout();
     router.replace("/login");
@@ -211,12 +224,12 @@ export function AppHeader() {
         <BackgroundSettingsButton />
       </div>
 
-      {/* Lớp nền mờ khi vòng tròn bung ra (click ra ngoài để đóng) */}
+      {/* Lớp bắt click ra ngoài để thu gọn — hoàn toàn trong suốt, không làm mờ trang */}
       {open && (
         <div
           aria-hidden
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-40 bg-[#fdf3f0]/80 backdrop-blur-md transition-opacity duration-200"
+          className="fixed inset-0 z-40 bg-transparent"
         />
       )}
 
@@ -228,8 +241,8 @@ export function AppHeader() {
           aria-expanded={open}
           aria-label="Mở vòng tròn điều hướng chức năng"
           className={cn(
-            "group relative flex h-15 w-15 items-center justify-center rounded-full border-[2.3px] border-[#45413e] bg-[#fffaf8] text-[#45413e] shadow-raised transition-all duration-300 hover:scale-105 cursor-pointer",
-            open && "scale-90 opacity-0 pointer-events-none"
+            "group relative flex h-15 w-15 items-center justify-center rounded-full border-[2.3px] border-[#45413e] bg-[#fffaf8] text-[#45413e] shadow-raised transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-105 cursor-pointer",
+            open && "scale-75 rotate-45 opacity-0 pointer-events-none"
           )}
         >
           {currentItem && (
@@ -257,37 +270,55 @@ export function AppHeader() {
           </svg>
         </button>
 
-        {!open && (
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="hidden sm:flex items-center gap-2 rounded-full border border-line/80 bg-[#fffaf8]/90 px-3.5 py-1.5 text-xs font-semibold text-ink shadow-2xs backdrop-blur-md transition hover:bg-white cursor-pointer"
-          >
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: currentItem?.color ?? "#45413e" }}
-            />
-            <span>{currentItem?.label ?? "Chọn chức năng"}</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          tabIndex={open ? -1 : 0}
+          className={cn(
+            "hidden sm:flex items-center gap-2 rounded-full border border-line/80 bg-[#fffaf8]/95 px-3.5 py-1.5 text-xs font-semibold text-ink shadow-sm transition-all duration-200 hover:bg-white cursor-pointer",
+            open && "opacity-0 -translate-x-2 pointer-events-none"
+          )}
+        >
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: currentItem?.color ?? "#45413e" }}
+          />
+          <span>{currentItem?.label ?? "Chọn chức năng"}</span>
+        </button>
       </div>
 
-      {/* ── SƠ ĐỒ VÒNG TRÒN CÁNH HOA KHI CLICK BUNG RA (Expanded Hub) ──── */}
-      {open && (
-        <nav
-          aria-label="Vòng tròn điều hướng chức năng"
-          className="fixed left-0 top-0 z-50 h-[540px] w-[680px] max-w-full select-none animate-in fade-in zoom-in-95 duration-200"
+      {/* ── SƠ ĐỒ VÒNG TRÒN CÁNH HOA KHI CLICK BUNG RA (Giữ mount để chạy animation mở/đóng) ──── */}
+      <nav
+        aria-label="Vòng tròn điều hướng chức năng"
+        aria-hidden={!open}
+        className={cn(
+          "fixed left-0 top-0 z-50 h-[560px] w-[680px] max-w-full select-none",
+          open ? "pointer-events-auto" : "pointer-events-none"
+        )}
+      >
+        {/* Vòng tròn trung tâm kết nối các cánh hoa + nút thu gọn */}
+        <div
+          style={{
+            left: `${centerX}px`,
+            top: `${centerY}px`,
+            width: `${ringRadius * 2 + 16}px`,
+            height: `${ringRadius * 2 + 16}px`,
+            transform: open ? "translate(-50%, -50%) scale(1)" : "translate(-50%, -50%) scale(0.45)",
+            opacity: open ? 1 : 0,
+            transitionDelay: open ? "0ms" : `${Math.max(0, petals.length - 1) * 20}ms`,
+          }}
+          className="absolute flex items-center justify-center transition-all duration-400 ease-[cubic-bezier(0.22,1,0.36,1)]"
         >
-          {/* Vòng tròn trung tâm kết nối các cánh hoa */}
           <svg
             aria-hidden
-            className="pointer-events-none absolute inset-0 h-full w-full"
+            viewBox={`0 0 ${ringRadius * 2 + 16} ${ringRadius * 2 + 16}`}
+            className="pointer-events-none absolute inset-0 h-full w-full drop-shadow-md"
           >
             <circle
-              cx={centerX}
-              cy={centerY}
+              cx={ringRadius + 8}
+              cy={ringRadius + 8}
               r={ringRadius}
-              fill="#fffaf8"
+              fill="rgba(255, 250, 248, 0.96)"
               stroke="#45413e"
               strokeWidth="2.3"
             />
@@ -296,13 +327,16 @@ export function AppHeader() {
           {/* Nút Trung Tâm Vòng Tròn (3 ô vuông + ngôi sao 4 cánh) — bấm để thu gọn */}
           <button
             type="button"
+            tabIndex={open ? 0 : -1}
             onClick={() => setOpen(false)}
-            style={{ left: `${centerX}px`, top: `${centerY}px` }}
             aria-label="Đóng vòng tròn điều hướng"
-            className="group absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full p-5 text-[#45413e] transition-transform hover:scale-105 cursor-pointer"
+            className="group relative flex flex-col items-center justify-center rounded-full p-5 text-[#45413e] transition-transform hover:scale-105 cursor-pointer"
           >
             <svg
-              className="h-18 w-18 transition-transform duration-300 group-hover:rotate-12"
+              className={cn(
+                "h-18 w-18 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:rotate-[102deg]",
+                open ? "rotate-90" : "rotate-0"
+              )}
               viewBox="0 0 80 80"
               fill="none"
               stroke="currentColor"
@@ -319,92 +353,113 @@ export function AppHeader() {
               Thu gọn
             </span>
           </button>
+        </div>
 
-          {/* Các Cánh Hoa (Petals) xung quanh vòng tròn */}
-          {petals.map((petal) => {
-            const rad = (petal.angleDeg * Math.PI) / 180;
-            const px = centerX + Math.cos(rad) * petalDistance;
-            const py = centerY + Math.sin(rad) * petalDistance;
-            // Góc xoay để mũi nhọn (góc 45° dưới-phải) luôn chĩa thẳng vào tâm vòng tròn
-            const petalRotationDeg = petal.angleDeg + 135;
-            const active = isActive(pathname, petal.href);
+        {/* Các Cánh Hoa (Petals) bung tỏa từ tâm vòng tròn theo hiệu ứng spring */}
+        {petals.map((petal, idx) => {
+          const rad = (petal.angleDeg * Math.PI) / 180;
+          const dx = Math.round(Math.cos(rad) * petalDistance);
+          const dy = Math.round(Math.sin(rad) * petalDistance);
+          // Góc xoay để mũi nhọn (góc 45° dưới-phải) luôn chĩa thẳng vào tâm vòng tròn
+          const petalRotationDeg = petal.angleDeg + 135;
+          const active = isActive(pathname, petal.href);
 
-            return (
-              <div
-                key={petal.id}
-                style={{ left: `${px}px`, top: `${py}px` }}
-                className="absolute -translate-x-1/2 -translate-y-1/2"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleNavigate(petal.href)}
-                  aria-current={active ? "page" : undefined}
-                  className="group relative flex items-center justify-center focus:outline-none cursor-pointer"
-                >
-                  {/* Cánh hoa giọt nước */}
-                  <div
-                    style={{
-                      borderColor: petal.color,
-                      color: petal.color,
-                      transform: `rotate(${petalRotationDeg}deg)`,
-                    }}
-                    className={cn(
-                      "flex h-22 w-22 shrink-0 items-center justify-center rounded-[50%_50%_4px_50%] border-[2.4px] bg-[#fffaf8] shadow-md transition-all duration-200 group-hover:scale-110 group-hover:bg-white",
-                      active && "ring-4 ring-offset-2 bg-white scale-105"
-                    )}
-                  >
-                    <div style={{ transform: `rotate(${-petalRotationDeg}deg)` }}>
-                      {petal.icon}
-                    </div>
-                  </div>
-
-                  {/* Nhãn chữ đặt bên ngoài cánh hoa giống hệt ảnh mẫu */}
-                  <div
-                    className={cn(
-                      "pointer-events-auto w-[145px] transition-transform group-hover:scale-[1.03]",
-                      petal.labelPosition === "left" &&
-                        "absolute right-full mr-4 text-right",
-                      petal.labelPosition === "right" &&
-                        "absolute left-full ml-4 text-left",
-                      petal.labelPosition === "bottom" &&
-                        "absolute left-1/2 top-full mt-3 -translate-x-1/2 w-[180px] text-center",
-                      petal.labelPosition === "top" &&
-                        "absolute bottom-full left-1/2 mb-3 -translate-x-1/2 w-[180px] text-center"
-                    )}
-                  >
-                    <p
-                      className="text-[15px] font-bold leading-snug"
-                      style={{ color: active ? petal.color : "#3d3937" }}
-                    >
-                      {petal.label}
-                    </p>
-                    <p className="mt-0.5 text-xs font-medium text-muted leading-tight">
-                      {petal.sublabel}
-                    </p>
-                  </div>
-                </button>
-              </div>
-            );
-          })}
-
-          {/* Nút Đăng xuất tinh tế ở góc dưới sơ đồ */}
-          <div
-            style={{ left: `${centerX}px`, top: `${centerY + petalDistance + 92}px` }}
-            className="absolute -translate-x-1/2 flex items-center gap-3"
-          >
-            {user?.email && (
-              <span className="text-xs font-medium text-muted">{user.email}</span>
-            )}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-red-200 bg-[#fffaf8] px-3.5 py-1 text-xs font-semibold text-red-600 shadow-2xs transition hover:bg-red-50 cursor-pointer"
+          return (
+            <div
+              key={petal.id}
+              style={{
+                left: `${centerX}px`,
+                top: `${centerY}px`,
+                transform: open
+                  ? `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1)`
+                  : "translate(-50%, -50%) scale(0.2)",
+                opacity: open ? 1 : 0,
+                transitionDelay: open
+                  ? `${idx * 45}ms`
+                  : `${(petals.length - 1 - idx) * 25}ms`,
+              }}
+              className="absolute transition-all duration-450 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
             >
-              Đăng xuất
-            </button>
-          </div>
-        </nav>
-      )}
+              <Link
+                href={petal.href}
+                prefetch
+                tabIndex={open ? 0 : -1}
+                onClick={() => setOpen(false)}
+                aria-current={active ? "page" : undefined}
+                className="group relative flex items-center justify-center focus:outline-none cursor-pointer"
+              >
+                {/* Cánh hoa giọt nước */}
+                <div
+                  style={{
+                    borderColor: petal.color,
+                    color: petal.color,
+                    transform: `rotate(${petalRotationDeg}deg)`,
+                  }}
+                  className={cn(
+                    "flex h-22 w-22 shrink-0 items-center justify-center rounded-[50%_50%_4px_50%] border-[2.4px] bg-[#fffaf8] shadow-lg transition-all duration-200 group-hover:scale-110 group-hover:bg-white",
+                    active && "ring-4 ring-offset-2 bg-white scale-105"
+                  )}
+                >
+                  <div style={{ transform: `rotate(${-petalRotationDeg}deg)` }}>
+                    {petal.icon}
+                  </div>
+                </div>
+
+                {/* Nhãn chữ nổi gọn, rõ nét trên nền trang không làm mờ */}
+                <div
+                  className={cn(
+                    "pointer-events-auto w-[154px] rounded-2xl border border-line bg-[#fffaf8]/95 px-3 py-1.5 shadow-md transition-transform group-hover:scale-[1.03]",
+                    petal.labelPosition === "left" &&
+                      "absolute right-full mr-3.5 text-right",
+                    petal.labelPosition === "right" &&
+                      "absolute left-full ml-3.5 text-left",
+                    petal.labelPosition === "bottom" &&
+                      "absolute left-1/2 top-full mt-2.5 -translate-x-1/2 w-[178px] text-center",
+                    petal.labelPosition === "top" &&
+                      "absolute bottom-full left-1/2 mb-2.5 -translate-x-1/2 w-[178px] text-center"
+                  )}
+                >
+                  <p
+                    className="text-sm font-bold leading-snug"
+                    style={{ color: active ? petal.color : "#3d3937" }}
+                  >
+                    {petal.label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-medium text-muted leading-tight">
+                    {petal.sublabel}
+                  </p>
+                </div>
+              </Link>
+            </div>
+          );
+        })}
+
+        {/* Nút Đăng xuất tinh tế ở góc dưới sơ đồ */}
+        <div
+          style={{
+            left: `${centerX}px`,
+            top: `${centerY + petalDistance + 98}px`,
+            transform: open
+              ? "translate(-50%, 0px) scale(1)"
+              : "translate(-50%, -12px) scale(0.9)",
+            opacity: open ? 1 : 0,
+            transitionDelay: open ? `${petals.length * 40}ms` : "0ms",
+          }}
+          className="absolute flex items-center gap-2.5 rounded-full border border-line bg-[#fffaf8]/95 px-3 py-1 shadow-md transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        >
+          {user?.email && (
+            <span className="text-xs font-medium text-muted">{user.email}</span>
+          )}
+          <button
+            type="button"
+            tabIndex={open ? 0 : -1}
+            onClick={handleLogout}
+            className="rounded-full border border-red-200 bg-red-50/70 px-3 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 cursor-pointer"
+          >
+            Đăng xuất
+          </button>
+        </div>
+      </nav>
 
       {/* Khoảng đệm nhỏ đầu trang để nút tròn góc trái không che tiêu đề */}
       <div aria-hidden className="h-18" />

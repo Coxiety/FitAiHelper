@@ -24,7 +24,7 @@ const MACROS: {
     color: "#7c5ce6",
     angleDeg: -142,
     side: "left",
-    icon: <Flame className="h-7 w-7" strokeWidth={1.85} />,
+    icon: <Flame className="h-6 w-6" strokeWidth={1.85} />,
   },
   {
     key: "protein_g",
@@ -33,7 +33,7 @@ const MACROS: {
     color: "#2ebd85",
     angleDeg: -38,
     side: "right",
-    icon: <Beef className="h-7 w-7" strokeWidth={1.85} />,
+    icon: <Beef className="h-6 w-6" strokeWidth={1.85} />,
   },
   {
     key: "fat_g",
@@ -42,7 +42,7 @@ const MACROS: {
     color: "#d9822b",
     angleDeg: 142,
     side: "left",
-    icon: <Droplet className="h-7 w-7" strokeWidth={1.85} />,
+    icon: <Droplet className="h-6 w-6" strokeWidth={1.85} />,
   },
   {
     key: "carb_g",
@@ -51,7 +51,7 @@ const MACROS: {
     color: "#1ca8d4",
     angleDeg: 38,
     side: "right",
-    icon: <Wheat className="h-7 w-7" strokeWidth={1.85} />,
+    icon: <Wheat className="h-6 w-6" strokeWidth={1.85} />,
   },
 ];
 
@@ -67,7 +67,7 @@ const FIELD_LABELS: Record<string, string> = {
 export function ProfileInvite({ missing }: { missing: string[] }) {
   const vnMissing = missing.map((m) => FIELD_LABELS[m] ?? m).join(", ");
   return (
-    <div className="mx-auto max-w-xl rounded-full border border-line bg-surface/85 px-5 py-2.5 text-center text-xs text-muted shadow-2xs backdrop-blur-sm">
+    <div className="mx-auto max-w-lg rounded-full border border-line bg-surface/85 px-4 py-2 text-center text-xs text-muted shadow-2xs backdrop-blur-sm">
       Hồ sơ còn thiếu <span className="font-medium text-ink">{vnMissing}</span> nên chưa tính được mục tiêu TDEE.{" "}
       <Link href="/onboarding" className="font-bold text-brand-700 underline underline-offset-4 hover:text-brand-800">
         Thiết lập ngay →
@@ -78,21 +78,21 @@ export function ProfileInvite({ missing }: { missing: string[] }) {
 
 /**
  * Sơ đồ Vòng Tròn 4 Cánh Hoa Dinh Dưỡng Hôm Nay (Calo, Protein, Fat, Carb).
- * Bỏ hoàn toàn 4 hộp chữ nhật dàn hàng ngang; thay bằng vòng tròn trung tâm + 4 cánh hoa hướng tâm.
+ * Thiết kế gọn để đặt vừa vặn ở góc trên bên trái của Dashboard.
  */
 export function TodayStats({ summary }: { summary: DailySummary }) {
   const hasLog = summary.entries_count > 0;
-  const centerX = 420;
-  const centerY = 175;
-  const ringRadius = 86;
-  const petalDistance = 132;
+  const centerX = 310;
+  const centerY = 160;
+  const ringRadius = 74;
+  const petalDistance = 112;
 
   return (
-    <section aria-label="Dinh dưỡng hôm nay" className="space-y-4">
+    <section aria-label="Dinh dưỡng hôm nay" className="space-y-3">
       {/* Desktop / Tablet: Sơ đồ vòng tròn 4 cánh hoa */}
-      <div className="relative mx-auto hidden h-[350px] w-full max-w-[840px] select-none md:block">
+      <div className="relative mx-auto hidden h-[320px] w-full max-w-[620px] select-none sm:block">
         {/* Vòng tròn mảnh ở tâm */}
-        <svg aria-hidden viewBox="0 0 840 350" className="pointer-events-none absolute inset-0 h-full w-full">
+        <svg aria-hidden viewBox="0 0 620 320" className="pointer-events-none absolute inset-0 h-full w-full">
           <circle
             cx={centerX}
             cy={centerY}
@@ -108,15 +108,15 @@ export function TodayStats({ summary }: { summary: DailySummary }) {
           href="/meals"
           title="Nhấn để ghi bữa ăn hôm nay"
           style={{ left: `${centerX}px`, top: `${centerY}px` }}
-          className="group absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full p-4 text-center transition-transform hover:scale-105"
+          className="group absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center rounded-full p-3 text-center transition-transform hover:scale-105"
         >
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border-2 border-[#45413e] bg-surface text-[#45413e] transition-transform group-hover:rotate-6">
-            <UtensilsCrossed className="h-5 w-5" strokeWidth={2} />
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border-2 border-[#45413e] bg-surface text-[#45413e] transition-transform group-hover:rotate-6">
+            <UtensilsCrossed className="h-4.5 w-4.5" strokeWidth={2} />
           </div>
-          <span className="mt-2 text-xs font-bold uppercase tracking-wider text-ink">
+          <span className="mt-1.5 text-[11px] font-bold uppercase tracking-wider text-ink">
             {hasLog ? `${summary.entries_count} món hôm nay` : "Ghi bữa ăn"}
           </span>
-          <span className="mt-0.5 text-[11px] font-medium text-muted">
+          <span className="mt-0.5 text-[10px] font-medium text-muted">
             {hasLog ? "Nhấn để thêm món" : "Chạm để bắt đầu"}
           </span>
         </Link>
@@ -149,20 +149,22 @@ export function TodayStats({ summary }: { summary: DailySummary }) {
                   color: color,
                   transform: `rotate(${petalRotationDeg}deg)`,
                 }}
-                className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[50%_50%_4px_50%] border-[2.4px] bg-surface shadow-sm transition-transform duration-200 hover:scale-108"
+                className="flex h-17 w-17 shrink-0 items-center justify-center rounded-[50%_50%_4px_50%] border-[2.4px] bg-surface shadow-sm transition-transform duration-200 hover:scale-108"
               >
                 <div style={{ transform: `rotate(${-petalRotationDeg}deg)` }}>{icon}</div>
               </div>
 
-              {/* Thông số nổi bên cạnh cánh hoa (không đóng hộp chữ nhật) */}
+              {/* Thông số nổi bên cạnh cánh hoa */}
               <div
                 className={cn(
-                  "w-[195px]",
-                  side === "left" ? " absolute right-full mr-4 text-right" : "absolute left-full ml-4 text-left"
+                  "w-[155px]",
+                  side === "left" ? "absolute right-full mr-3 text-right" : "absolute left-full ml-3 text-left"
                 )}
               >
-                <p className="text-xs font-bold uppercase tracking-wider text-muted">{label}</p>
-                <p className="mt-0.5 font-numeric text-xl font-bold tabular-nums text-ink">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted leading-tight">
+                  {label}
+                </p>
+                <p className="mt-0.5 font-numeric text-lg font-bold tabular-nums text-ink">
                   {hasLog ? (
                     <>
                       {formatNumber(eaten, digits)}
@@ -172,14 +174,14 @@ export function TodayStats({ summary }: { summary: DailySummary }) {
                       <span className="ml-1 text-xs font-medium text-muted">{unit}</span>
                     </>
                   ) : (
-                    <span className="text-base font-bold text-ink">Chưa ghi</span>
+                    <span className="text-sm font-bold text-ink">Chưa ghi</span>
                   )}
                 </p>
 
                 {target !== null && (
                   <div
                     className={cn(
-                      "mt-1.5 h-1.5 w-36 overflow-hidden rounded-full bg-line/70",
+                      "mt-1 h-1.5 w-28 overflow-hidden rounded-full bg-line/70",
                       side === "left" ? "ml-auto" : "mr-auto"
                     )}
                     role="progressbar"
@@ -214,8 +216,8 @@ export function TodayStats({ summary }: { summary: DailySummary }) {
         })}
       </div>
 
-      {/* Mobile (< md): Lưới 2x2 cánh hoa gọn gàng */}
-      <div className="grid grid-cols-2 gap-4 md:hidden">
+      {/* Mobile (< sm): Lưới 2x2 cánh hoa gọn gàng */}
+      <div className="grid grid-cols-2 gap-4 sm:hidden">
         {MACROS.map(({ key, label, unit, color, icon }) => {
           const digits = unit === "kcal" ? 0 : 1;
           const eaten = summary.eaten[key];
@@ -225,7 +227,7 @@ export function TodayStats({ summary }: { summary: DailySummary }) {
             <div key={key} className="flex flex-col items-center text-center p-2">
               <div
                 style={{ borderColor: color, color: color }}
-                className="flex h-15 w-15 -rotate-45 items-center justify-center rounded-[50%_50%_4px_50%] border-2 bg-surface shadow-2xs"
+                className="flex h-14 w-14 -rotate-45 items-center justify-center rounded-[50%_50%_4px_50%] border-2 bg-surface shadow-2xs"
               >
                 <span className="rotate-45">{icon}</span>
               </div>

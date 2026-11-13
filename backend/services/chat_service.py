@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 
 from models.chat import ChatSession, ChatMessage
 from models.profile import UserProfile
+from services.agent_actions import log_body_metric_for_user, log_meal_for_user
 from services.ai_agents.fitness_advisor import AgentToolContext, ChatAgentException, fitness_agent
 from services.foods.lookup import search_foods
 from services.meals import daily_summary
@@ -97,6 +98,8 @@ class ChatService:
             load_progress_summary=lambda days: self._load_progress_summary(user_id, days),
             load_recommendation=lambda experience: self._load_recommendation(user_id, experience),
             load_training_summary=lambda: self._load_training_summary(user_id),
+            log_meal=lambda q, g, mt: log_meal_for_user(self.db, user_id, q, g, mt),
+            log_body_metric=lambda w, waist: log_body_metric_for_user(self.db, user_id, w, waist),
         )
         try:
             ai_reply = await fitness_agent.chat(

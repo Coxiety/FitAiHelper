@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
         // Trình duyệt gọi localhost:3000/api/v1/... 
         // → Next.js server forward sang backend:8000/api/v1/... (mạng nội bộ Docker)
         source: "/api/:path*",
-        destination: "http://backend:8000/api/:path*",
+        destination: `${process.env.BACKEND_INTERNAL_URL || "http://127.0.0.1:8000"}/api/:path*`,
       },
     ];
   },

@@ -23,6 +23,7 @@ export interface User {
   is_active: boolean;
   /** Chỉ để quyết định hiện liên kết quản trị; quyền thật luôn do server kiểm tra. */
   role?: "user" | "admin";
+  telegram_linked?: boolean;
 }
 
 export interface ProfileData {
@@ -64,6 +65,9 @@ export const authApi = {
   register: (data: RegisterRequest) => apiClient.post<User>("/auth/register", data),
 
   me: () => apiClient.get<User>("/users/me"),
+
+  createTelegramLinkCode: () =>
+    apiClient.post<{ telegram_linked: boolean; link_code: string }>("/users/me/telegram-link", {}),
 
   getProfile: () => apiClient.get<ProfileData>("/profile"),
 

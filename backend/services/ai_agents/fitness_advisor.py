@@ -123,6 +123,8 @@ class AgentToolContext:
         load_progress_summary: Callable[[int], Awaitable[dict]] = _no_progress_summary,
         load_recommendation: Callable[[Optional[str]], Awaitable[dict]] = _no_recommendation,
         load_training_summary: Callable[[], Awaitable[dict]] = _no_training_summary,
+        log_meal: Optional[Callable[[str, float, str], Awaitable[dict]]] = None,
+        log_body_metric: Optional[Callable[[float, Optional[float]], Awaitable[dict]]] = None,
     ) -> None:
         self._load_profile = load_profile
         self._lookup_food = lookup_food
@@ -130,6 +132,8 @@ class AgentToolContext:
         self._load_progress_summary = load_progress_summary
         self._load_recommendation = load_recommendation
         self._load_training_summary = load_training_summary
+        self.log_meal_fn = log_meal
+        self.log_body_metric_fn = log_body_metric
         self._sources: list[dict] = []
         self.tool_calls: list[str] = []
         self.knowledge_unavailable = False
@@ -487,8 +491,43 @@ def build_tools(ctx: AgentToolContext) -> list[BaseTool]:
                     "Không được tự ước lượng số liệu.")
         return json.dumps(result, ensure_ascii=False)
 
-    return [search_knowledge_tool, calc_body_metrics_tool, lookup_food_tool, get_daily_summary_tool,
-            get_progress_summary_tool, recommend_program_tool, get_training_summary_tool]
+    tools = [search_knowledge_tool, calc_body_metrics_tool, lookup_food_tool, get_daily_summary_tool,
+             get_progress_summary_tool, recommend_program_tool, get_training_summary_tool]
+
+    if ctx.log_meal_fn is not None:
+        @tool("log_meal")
+        async def log_meal_tool(food_query: str, grams: float, meal_type: str = "phu") -> str:
+            """Ghi nhận nhanh một món ăn vào nhật ký bữa ăn hôm nay của người dùng khi người dùng
+            nói vừa ăn / muốn ghi món ăn (vd. 'ghi 150g ức gà bữa trưa').
+            - `food_query`: tên món ăn tiếng Việt (vd: 'cơm trắng', 'ức gà', 'phở bò').
+            - `grams`: khối lượng phần ăn được tính bằng gam (>0, <=5000).
+            - `meal_type`: 'sang', 'trua', 'toi', hoặc 'phu'."""
+            ctx.tool_calls.append("log_meal")
+            try:
+                result = await ctx.log_meal_fn(food_query, float(grams), meal_type)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("log_meal failed: %s", type(exc).__name__)
+                return f"Không ghi được bữa ăn: {exc}"
+            return json.dumps(result, ensure_ascii=False)
+
+        tools.append(log_meal_tool)
+
+    if ctx.log_body_metric_fn is not None:
+        @tool("log_body_metric")
+        async def log_body_metric_tool(weight_kg: float, waist_cm: Optional[float] = None) -> str:
+            """Ghi nhận cân nặng (kg) và tuỳ chọn vòng eo (cm) hôm nay của người dùng khi họ báo
+            số đo mới (vd. 'hôm nay mình nặng 68.5kg')."""
+            ctx.tool_calls.append("log_body_metric")
+            try:
+                result = await ctx.log_body_metric_fn(float(weight_kg), waist_cm)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("log_body_metric failed: %s", type(exc).__name__)
+                return f"Không ghi được số đo: {exc}"
+            return json.dumps(result, ensure_ascii=False)
+
+        tools.append(log_body_metric_tool)
+
+    return tools
 
 
 # ── System prompt ────────────────────────────────────────────────────────────

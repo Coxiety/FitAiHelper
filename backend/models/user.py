@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import String, DateTime, Enum as SAEnum, func
+from sqlalchemy import BigInteger, String, DateTime, Enum as SAEnum, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -32,6 +32,8 @@ class User(Base):
         SAEnum(UserRole, name="user_role", values_callable=lambda e: [m.value for m in e]),
         nullable=False, default=UserRole.USER, server_default=UserRole.USER.value,
     )
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, index=True, nullable=True)
+    telegram_link_code: Mapped[str | None] = mapped_column(String(32), unique=True, index=True, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

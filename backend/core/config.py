@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     ADMIN_CONVERSATION_VIEWER_ENABLED: bool = False
     ADMIN_CONVERSATION_VIEW_DAILY_LIMIT: int = 30
 
+    # Telegram Bot (tùy chọn — để trống nếu không chạy bot)
+    TELEGRAM_BOT_TOKEN: str = ""
+
     # CORS
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
 

@@ -230,13 +230,15 @@ if (($dbExists | Out-String).Trim() -ne "1") {
     & "$PG_BIN\createdb.exe" -h 127.0.0.1 -p 5432 -U postgres fitai_db
 }
 
-# 3b. ChromaDB (port 8001)
+# 3b. ChromaDB (port 8001 — ép bind IPv4 127.0.0.1 để khớp CHROMA_HOST=127.0.0.1 trong backend/.env)
 Write-Host "   [2/4] ChromaDB (port 8001)..."
 $CHROMA_LOG = Join-Path $env:TEMP "fitai_chroma.log"
-$chromaListening = Get-NetTCPConnection -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue
+$chromaListening = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8001 -State Listen -ErrorAction SilentlyContinue
 if (-not $chromaListening) {
+    Get-Process chroma -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
     $chromaPath = Join-Path $SCRIPT_DIR "chroma_data"
-    Start-DetachedProcess -CommandLine "cmd.exe /c `"`"$CHROMA_EXE`" run --path `"$chromaPath`" --port 8001 > `"$CHROMA_LOG`" 2>&1`"" -WorkingDirectory $SCRIPT_DIR
+    Start-DetachedProcess -CommandLine "cmd.exe /c `"`"$CHROMA_EXE`" run --host 127.0.0.1 --port 8001 --path `"$chromaPath`" > `"$CHROMA_LOG`" 2>&1`"" -WorkingDirectory $SCRIPT_DIR
 }
 
 # 3c. FastAPI Backend (port 8000)
@@ -248,17 +250,38 @@ if (-not $backendListening) {
     Start-DetachedProcess -CommandLine "cmd.exe /c `"set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& `"$UVICORN`" main:app --host 0.0.0.0 --port 8000 --reload --reload-dir api --reload-dir core --reload-dir models --reload-dir services > `"$BACKEND_LOG`" 2>&1`"" -WorkingDirectory $backendDir
 }
 
-# 3d. Next.js Frontend (port 3000) — kèm DNS shim để http://backend:8000 trong next.config.ts trỏ về 127.0.0.1
+# 3d. Next.js Frontend (port 3000) — chạy bản production build (next start) để chuyển trang tức thì
 Write-Host "   [4/4] Next.js Frontend (port 3000)..."
 $FRONTEND_LOG = Join-Path $env:TEMP "fitai_frontend.log"
-$dnsShimFile  = Join-Path $env:TEMP "fitai_dns.cjs"
-$dnsShimCode  = 'const dns=require("dns"),o=dns.lookup;dns.lookup=function(h,opt,cb){if(h==="backend"||h==="chromadb"||h==="db"||h==="localhost")h="127.0.0.1";return o.call(this,h,opt,cb);};'
-[System.IO.File]::WriteAllText($dnsShimFile, $dnsShimCode, (New-Object System.Text.UTF8Encoding($false)))
-$dnsShimArg   = $dnsShimFile.Replace('\', '/')
+$frontendDir = Join-Path $SCRIPT_DIR "frontend"
+$buildIdFile = Join-Path $frontendDir ".next\BUILD_ID"
 $frontendListening = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
 if (-not $frontendListening) {
-    $frontendDir = Join-Path $SCRIPT_DIR "frontend"
-    Start-DetachedProcess -CommandLine "cmd.exe /c `"set PATH=$NODE_DIR;%PATH%&& set NODE_OPTIONS=--require $dnsShimArg&& set NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1&& `"$NPM_CMD`" run dev > `"$FRONTEND_LOG`" 2>&1`"" -WorkingDirectory $frontendDir
+    if (-not (Test-Path $buildIdFile)) {
+        Write-Host "${BLUE}   🔨 Đang biên dịch bản tối ưu Frontend lần đầu (chỉ mất ~15 giây)...${NC}"
+        Push-Location $frontendDir
+        $env:PATH = "$NODE_DIR;$env:PATH"
+        & $NPM_CMD run build | Out-Null
+        Pop-Location
+    }
+    Start-DetachedProcess -CommandLine "cmd.exe /c `"set PATH=$NODE_DIR;%PATH%&& `"$NPM_CMD`" run start > `"$FRONTEND_LOG`" 2>&1`"" -WorkingDirectory $frontendDir
+}
+
+# 3e. Telegram Bot (tùy chọn — chỉ chạy khi có TELEGRAM_BOT_TOKEN trong backend/.env)
+$BOT_TOKEN = ""
+if (Test-Path $ENV_FILE) {
+    foreach ($line in (Get-Content $ENV_FILE -Encoding UTF8)) {
+        if ($line -match "^TELEGRAM_BOT_TOKEN=(.+)$") { $BOT_TOKEN = $Matches[1].Trim() }
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($BOT_TOKEN)) {
+    Write-Host "   [5/5] Telegram Bot (Long Polling)..."
+    $BOT_LOG = Join-Path $env:TEMP "fitai_telegram_bot.log"
+    $botRunning = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*scripts.run_telegram_bot*" }
+    if (-not $botRunning) {
+        $backendDir = Join-Path $SCRIPT_DIR "backend"
+        Start-DetachedProcess -CommandLine "cmd.exe /c `"set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& `"$VENV_PY`" -m scripts.run_telegram_bot > `"$BOT_LOG`" 2>&1`"" -WorkingDirectory $backendDir
+    }
 }
 
 Write-Host "${BLUE}⏳ Đang đợi Backend khởi động và kết nối Database...${NC}"
