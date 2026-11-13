@@ -1,13 +1,9 @@
 import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Card } from "./Card";
 
 export interface StatCardProgress {
-  /** Giá trị hiện tại (vd. đã ăn). */
   value: number;
-  /** Mục tiêu; chỉ vẽ thanh khi là số hợp lệ > 0 (không chia cho 0). */
   max: number | null | undefined;
-  /** Nhãn cho trình đọc màn hình. */
   label: string;
 }
 
@@ -15,24 +11,24 @@ export interface StatCardProps {
   label: string;
   value: ReactNode;
   unit?: string;
-  /** Dòng phụ dưới số liệu (so sánh, mục tiêu…). */
   hint?: ReactNode;
-  /** Biểu tượng (vd. một icon lucide-react), hiển thị trong ô màu nhấn. */
   icon?: ReactNode;
-  /** "accent": số lớn màu cam đậm (accent-700, ≥ 4,5:1); "default": số màu ink. */
   emphasis?: "default" | "accent";
-  /** Thanh tiến độ so với mục tiêu. */
   progress?: StatCardProgress;
-  /** "over": vượt mục tiêu — thanh màu cảnh báo; nội dung chữ cảnh báo đặt trong `hint`. */
   status?: "normal" | "over";
+  /** Màu viền cánh hoa cho từng loại chỉ số */
+  petalColor?: string;
   className?: string;
 }
 
-/** Mục tiêu dùng được để so sánh: số hữu hạn > 0. */
 export function isValidTarget(max: number | null | undefined): max is number {
   return typeof max === "number" && Number.isFinite(max) && max > 0;
 }
 
+/**
+ * Widget chỉ số thiết kế theo phong cách Petal Line-Art (không đóng khung hộp chữ nhật cứng nhắc).
+ * Biểu tượng nằm trong hình giọt nước/cánh hoa viền mảnh, thông số nổi trực tiếp trên nền thoáng.
+ */
 export function StatCard({
   label,
   value,
@@ -42,35 +38,42 @@ export function StatCard({
   emphasis = "default",
   progress,
   status = "normal",
+  petalColor = "#2ebd85",
   className,
 }: StatCardProps) {
   const showBar = progress !== undefined && isValidTarget(progress.max);
   const pct = showBar ? Math.min(100, Math.max(0, (progress.value / (progress.max as number)) * 100)) : 0;
 
   return (
-    <Card padding="sm" className={cn("flex items-start gap-3", className)}>
+    <div
+      className={cn(
+        "group relative flex items-center gap-4 rounded-2xl border border-line/60 bg-surface/75 px-4 py-3.5 backdrop-blur-sm transition-all hover:border-line hover:bg-surface",
+        className
+      )}
+    >
       {icon && (
-        <span
+        <div
           aria-hidden
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-accent-100 text-accent-800"
+          style={{ borderColor: petalColor, color: petalColor }}
+          className="flex h-13 w-13 shrink-0 -rotate-12 items-center justify-center rounded-[50%_50%_12%_50%] border-2 bg-surface shadow-2xs transition-transform group-hover:rotate-0"
         >
-          {icon}
-        </span>
+          <span className="rotate-12 transition-transform group-hover:rotate-0">{icon}</span>
+        </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-muted">{label}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
         <p
           className={cn(
-            "mt-1 text-2xl font-bold tabular-nums",
+            "mt-0.5 font-numeric text-xl font-bold tabular-nums",
             emphasis === "accent" ? "text-accent-700" : "text-ink"
           )}
         >
           {value}
-          {unit && <span className="ml-1 text-sm font-medium text-muted">{unit}</span>}
+          {unit && <span className="ml-1 text-xs font-medium text-muted">{unit}</span>}
         </p>
         {showBar && (
           <div
-            className="mt-2 h-2 rounded-full bg-gray-100"
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-line/60"
             role="progressbar"
             aria-label={progress.label}
             aria-valuenow={Math.round(pct)}
@@ -78,13 +81,16 @@ export function StatCard({
             aria-valuemax={100}
           >
             <div
-              className={cn("h-2 rounded-full", status === "over" ? "bg-accent-500" : "bg-brand-600")}
-              style={{ width: `${pct}%` }}
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${pct}%`,
+                backgroundColor: status === "over" ? "#d9822b" : petalColor,
+              }}
             />
           </div>
         )}
-        {hint && <div className="mt-1.5 text-xs text-muted">{hint}</div>}
+        {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
       </div>
-    </Card>
+    </div>
   );
 }

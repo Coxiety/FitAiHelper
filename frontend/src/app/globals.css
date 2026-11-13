@@ -1,80 +1,105 @@
 @import "tailwindcss";
 
-/*
- * Design tokens — nơi DUY NHẤT khai báo màu, bo góc, bóng và phông của ứng dụng.
- * Tailwind v4 sinh class từ các biến này: bg-brand-700, text-ink, text-muted, bg-canvas,
- * rounded-card, shadow-card, bg-accent-100…
- *
- * Quy tắc tương phản (WCAG AA, chữ thường cần ≥ 4,5:1):
- *  - Nút chính / chữ liên kết: brand-700 (#047857, ~5,5:1 với trắng). Không dùng brand-600 (~3,8:1)
- *    hay nhạt hơn cho chữ nhỏ hoặc nền nút chữ trắng; brand-600 chỉ dùng cho viền, vòng focus, thanh.
- *  - Màu nhấn (accent, amber): làm nền nhạt kèm chữ accent-900, hoặc số lớn accent-700 trở lên;
- *    không dùng làm chữ nhỏ trên nền trắng.
- *  - Chữ chính ink #111827; chữ phụ muted #4b5563 (~7,6:1 với trắng).
- */
+/* ============================================================
+   FitAI Design System — Warm Botanical Editorial & Custom Canvas
+   ============================================================ */
+
 @theme {
   --font-sans: var(--font-be-vietnam-pro), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* Màu chủ đạo: xanh lá ngọc (thang emerald) */
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-200: #a7f3d0;
-  --color-brand-300: #6ee7b7;
-  --color-brand-400: #34d399;
-  --color-brand-500: #10b981;
-  --color-brand-600: #059669;
-  --color-brand-700: #047857;
-  --color-brand-800: #065f46;
-  --color-brand-900: #064e3b;
+  /* Màu chủ đạo: Deep Botanical Pine & Sage (thay cho màu neon emerald đại trà của AI) */
+  --color-brand-50: #f2f6f3;
+  --color-brand-100: #dfeae2;
+  --color-brand-200: #c0d6c7;
+  --color-brand-300: #95baa2;
+  --color-brand-400: #639677;
+  --color-brand-500: #356854;
+  --color-brand-600: #265643;
+  --color-brand-700: #1b4332;
+  --color-brand-800: #143326;
+  --color-brand-900: #0e241b;
 
-  /* Màu nhấn ấm (thang amber) cho số liệu nổi bật */
-  --color-accent-50: #fffbeb;
-  --color-accent-100: #fef3c7;
-  --color-accent-200: #fde68a;
-  --color-accent-300: #fcd34d;
-  --color-accent-400: #fbbf24;
-  --color-accent-500: #f59e0b;
-  --color-accent-600: #d97706;
-  --color-accent-700: #b45309;
-  --color-accent-800: #92400e;
-  --color-accent-900: #78350f;
+  /* Màu nhấn ấm: Terracotta & Ochre */
+  --color-accent-50: #fbf5ef;
+  --color-accent-100: #f5e6d6;
+  --color-accent-200: #ead0b3;
+  --color-accent-300: #ddb084;
+  --color-accent-400: #ce8b54;
+  --color-accent-500: #c06c30;
+  --color-accent-600: #a85520;
+  --color-accent-700: #8c4118;
+  --color-accent-800: #723516;
+  --color-accent-900: #5e2c14;
 
-  /* Chữ và nền */
-  --color-ink: #111827;
-  --color-muted: #4b5563;
-  --color-subtle: #9ca3af; /* chỉ cho placeholder / biểu tượng trang trí, không cho chữ cần đọc */
-  --color-canvas: #f8fafc;
-  --color-surface: #ffffff;
-  --color-line: #e5e7eb;
+  /* Chữ và nền hồng kem ấm (Warm Blush Cream theo mẫu Infographic) */
+  --color-ink: #3b3735;
+  --color-muted: #6b6360;
+  --color-subtle: #9c928e;
+  --color-canvas: #fbf2ee;
+  --color-surface: #fffaf8;
+  --color-surface-muted: #f4e6e0;
+  --color-line: #e8d8d0;
 
-  /* Bo góc và bóng */
-  --radius-card: 1rem; /* 16px */
-  --radius-control: 0.625rem; /* 10px: nút, ô nhập */
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-raised: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  /* Bo góc và bóng tinh tế hơn */
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --shadow-card: 0 1px 2px 0 rgb(27 32 28 / 0.04), 0 1px 3px 0 rgb(27 32 28 / 0.06);
+  --shadow-raised: 0 6px 16px -3px rgb(27 32 28 / 0.08), 0 2px 6px -2px rgb(27 32 28 / 0.05);
 }
 
-/*
- * Ứng dụng chỉ có giao diện sáng. Không đổi màu theo prefers-color-scheme: trước đây chế độ tối của hệ
- * điều hành làm chữ thành #ededed, và mọi input/textarea/select không đặt màu riêng (kế thừa màu chữ
- * theo preflight của Tailwind) hiện chữ gần như trắng trên nền trắng.
- */
 :root {
   color-scheme: light;
 }
 
-/* Luôn chừa chỗ cho thanh cuộn: trang dài và trang ngắn có cùng bề rộng hiển thị, logo không xê dịch. */
 html {
   scrollbar-gutter: stable;
 }
 
 body {
-  background: var(--color-canvas);
+  background-color: var(--color-canvas);
+  background-image:
+    radial-gradient(at 0% 0%, rgba(27, 67, 50, 0.04) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(168, 85, 32, 0.04) 0px, transparent 50%);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
 
+/* ============================================================
+   Chế độ Hình nền Tùy chỉnh (html[data-has-bg="true"])
+   Tự động làm trong suốt lớp nền trang (.bg-canvas) và chuyển
+   các thẻ (.bg-surface) thành mặt giấy mờ (frosted glass) ấm áp
+   để thấy rõ hình nền của người dùng mà chữ vẫn dễ đọc.
+   ============================================================ */
+html[data-has-bg="true"] body {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+html[data-has-bg="true"] .bg-canvas {
+  background-color: transparent !important;
+}
+
+html[data-has-bg="true"] .bg-surface {
+  background-color: rgba(253, 251, 247, 0.86) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+html[data-has-bg="true"] .bg-surface-muted {
+  background-color: rgba(234, 228, 215, 0.78) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.font-numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 @layer base {
+
   input,
   textarea,
   select {

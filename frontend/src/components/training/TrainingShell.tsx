@@ -49,7 +49,8 @@ export function TrainingShell({ weightLoss = false, narrow = false, children }: 
   const age = useProfileAge(isAuthenticated);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) router.replace("/login");
   }, [isAuthenticated, router]);
 
   return (

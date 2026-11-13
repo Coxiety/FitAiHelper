@@ -34,7 +34,8 @@ export function AdminView() {
   const toHome = useCallback(() => router.replace("/dashboard"), [router]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) {
       router.replace("/login");
       return;
     }

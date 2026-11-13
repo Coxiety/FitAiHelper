@@ -7,7 +7,6 @@ import { useAuthStore } from "@/store/auth-store";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
-import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { isValidTarget } from "@/components/ui/StatCard";
 import { CalendarDays, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,94 +30,54 @@ import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
 import { TrainingWeekCard } from "@/components/dashboard/TrainingWeekCard";
 import { WeightChart } from "@/components/dashboard/WeightChart";
 
-/** Cộng/trừ số ngày cho chuỗi YYYY-MM-DD (tính theo UTC để không lệch múi giờ máy). */
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 
-/** Thứ Hai của tuần chứa ngày `iso` (tuần bắt đầu từ thứ Hai). */
 function mondayOf(iso: string): string {
-  const weekday = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7; // thứ Hai = 0
+  const weekday = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7;
   return addDays(iso, -weekday);
 }
 
-/** Thẻ có tiêu đề của dashboard, dựng từ Card dùng chung. */
-function Panel({
-  title,
-  children,
-  right,
-  className,
-}: {
-  title: string;
-  children: React.ReactNode;
-  right?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <Card className={cn("h-full", className)}>
-      <section>
-        <CardHeader className="items-center">
-          <CardTitle>{title}</CardTitle>
-          {right}
-        </CardHeader>
-        {children}
-      </section>
-    </Card>
-  );
-}
-
-/** Thứ trong tuần của ngày YYYY-MM-DD (lấy từ ngày server trả về, không phụ thuộc múi giờ máy). */
 function weekdayVN(iso: string): string {
   const names = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
   return names[new Date(`${iso}T00:00:00Z`).getUTCDay()];
 }
 
-/** Thẻ chào đầu trang: tên, ngày hôm nay, một dòng tóm tắt calo hôm nay. */
-function GreetingCard({ name, today }: { name: string; today: DailySummary | null }) {
-  const hasLog = !!today && today.entries_count > 0;
-  const target = today?.target?.energy_kcal;
+function SectionStage({
+  title,
+  accentColor,
+  right,
+  className,
+  children,
+}: {
+  title: string;
+  accentColor: string;
+  right?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section
-      aria-labelledby="dashboard-title"
-      className="rounded-card border border-brand-100 bg-gradient-to-br from-brand-50 via-white to-teal-50 p-6 shadow-card sm:p-8"
+      className={cn(
+        "rounded-3xl border border-line/75 bg-surface/85 p-6 shadow-card backdrop-blur-md",
+        className
+      )}
     >
-      <h1 id="dashboard-title" className="text-sm font-semibold uppercase tracking-wide text-brand-800">
-        Tiến độ
-      </h1>
-      <p className="mt-1 text-2xl font-bold text-ink sm:text-3xl">Xin chào, {name}.</p>
-      {today && (
-        <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
-          <CalendarDays aria-hidden className="h-4 w-4" />
-          {weekdayVN(today.date)}, {fullDate(today.date)}
-        </p>
-      )}
-      {today && (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          {hasLog ? (
-            <p className="text-base text-ink">
-              Hôm nay bạn đã ghi{" "}
-              <strong className="font-semibold">
-                {formatNumber(today.eaten.energy_kcal, 0)}
-                {isValidTarget(target) && `/${formatNumber(target, 0)}`} kcal
-              </strong>
-              .
-            </p>
-          ) : (
-            <>
-              <p className="text-base text-ink">Bạn chưa ghi bữa ăn nào hôm nay.</p>
-              <Link
-                href="/meals"
-                className="inline-flex items-center gap-1.5 rounded-control bg-brand-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-brand-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2"
-              >
-                <UtensilsCrossed aria-hidden className="h-4 w-4" />
-                Ghi bữa ăn
-              </Link>
-            </>
-          )}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-line/60 pb-3.5">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden
+            className="h-4 w-4 -rotate-45 rounded-[50%_50%_2px_50%] border-2"
+            style={{ borderColor: accentColor, backgroundColor: `${accentColor}1a` }}
+          />
+          <h2 className="text-base font-bold tracking-tight text-ink">{title}</h2>
         </div>
-      )}
+        {right}
+      </div>
+      {children}
     </section>
   );
 }
@@ -139,13 +98,18 @@ export function DashboardView() {
   const loadSeq = useRef(0);
   const weeklySeq = useRef(0);
 
-  const handleUnauthorized = useCallback(() => router.replace("/login"), [router]);
+  const handleUnauthorized = useCallback(() => {
+    useAuthStore.getState().logout();
+    router.replace("/login");
+  }, [router]);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) {
+      router.replace("/login");
+    }
   }, [isAuthenticated, router]);
 
-  // Làm mới thông tin user (role có thể đã đổi bằng make_admin) — chỉ để hiện/ẩn liên kết quản trị
   useEffect(() => {
     if (!isAuthenticated) return;
     authApi
@@ -219,16 +183,50 @@ export function DashboardView() {
   const stats = progress?.stats;
   const kcalComparison = stats?.comparison?.energy_kcal ?? null;
   const currentMonday = mondayOf(todayVN());
+  const displayName = user?.full_name ?? user?.email ?? "bạn";
+  const hasLog = !!today && today.entries_count > 0;
+  const target = today?.target?.energy_kcal;
 
   return (
     <div className="min-h-screen bg-canvas">
       <AppHeader />
 
-      <PageContainer className="space-y-6">
-        <GreetingCard name={user?.full_name ?? user?.email ?? "bạn"} today={today} />
+      <PageContainer className="space-y-6 pt-2">
+        {/* Tiêu đề trang thoáng, đồng bộ phong cách Infographic */}
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line/80 pb-5">
+          <div>
+            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#7c5ce6]">
+              <span className="h-2 w-2 rounded-full bg-[#7c5ce6]" />
+              Tổng quan chỉ số hôm nay
+            </p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">
+              Xin chào, {displayName}
+            </h1>
+            {today && (
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-muted">
+                <CalendarDays aria-hidden className="h-4 w-4 text-[#2ebd85]" />
+                {weekdayVN(today.date)}, {fullDate(today.date)}
+                {hasLog && (
+                  <span className="ml-2 font-numeric font-semibold text-ink">
+                    · Đã nạp {formatNumber(today.eaten.energy_kcal, 0)}
+                    {isValidTarget(target) && ` / ${formatNumber(target, 0)}`} kcal
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+
+          <Link
+            href="/meals"
+            className="inline-flex items-center gap-2 rounded-full border-2 border-[#2ebd85] bg-surface px-4 py-2 text-xs font-bold text-[#1f9668] shadow-2xs transition hover:bg-[#2ebd85] hover:text-white"
+          >
+            <UtensilsCrossed aria-hidden className="h-3.5 w-3.5" />
+            Ghi bữa ăn hôm nay
+          </Link>
+        </header>
 
         {error && (
-          <div className="flex items-center justify-between rounded-control bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center justify-between rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
             <span>{error}</span>
             <Button size="sm" variant="secondary" onClick={() => load(days)}>
               Thử lại
@@ -236,19 +234,22 @@ export function DashboardView() {
           </div>
         )}
 
+        {/* 4 Widget cánh hoa chỉ số Macro hôm nay */}
         {loading && !progress ? (
           <p className="text-sm text-muted">Đang tải…</p>
         ) : (
           today && progress && <TodayStats summary={today} />
         )}
 
+        {/* Các bảng phân tích chi tiết */}
         <div className="grid items-stretch gap-6 lg:grid-cols-2">
           {progress && stats && (
-            <Panel
+            <SectionStage
               className="lg:col-span-2"
               title={`Calo theo ngày (${progress.period_label})`}
+              accentColor="#7c5ce6"
               right={
-                <div className="flex gap-1" role="group" aria-label="Chọn khoảng thời gian">
+                <div className="flex gap-1.5" role="group" aria-label="Chọn khoảng thời gian">
                   {PROGRESS_DAYS.map((d) => (
                     <button
                       key={d}
@@ -256,9 +257,10 @@ export function DashboardView() {
                       disabled={loading}
                       aria-pressed={d === days}
                       className={cn(
-                        "rounded-control px-3 py-1 text-sm font-medium transition-colors disabled:opacity-60",
-                        "outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-1",
-                        d === days ? "bg-brand-700 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        "rounded-full px-3.5 py-1 text-xs font-bold transition-colors disabled:opacity-60 cursor-pointer",
+                        d === days
+                          ? "bg-[#7c5ce6] text-white"
+                          : "border border-line bg-surface text-muted hover:text-ink"
                       )}
                     >
                       {d} ngày
@@ -268,19 +270,21 @@ export function DashboardView() {
               }
             >
               <CalorieChart series={progress.series} target={progress.target?.energy_kcal ?? null} />
-              <div className="mt-4 space-y-1 rounded-control border border-line bg-canvas px-4 py-3 text-sm text-ink">
+              <div className="mt-4 space-y-1 rounded-2xl border border-line/70 bg-canvas/60 px-4 py-3 text-sm text-ink">
                 <p>
-                  Có nhật ký {stats.logged_days}/{stats.days_count} ngày
+                  Có nhật ký <strong>{stats.logged_days}/{stats.days_count}</strong> ngày
                   {stats.incomplete_days > 0 && `, ${stats.incomplete_days} ngày tổng chưa đầy đủ`}.
                 </p>
                 {stats.average.energy_kcal !== null && (
                   <p>
-                    Calo trung bình: {formatNumber(stats.average.energy_kcal, 0)} kcal/ngày
+                    Calo trung bình: <strong>{formatNumber(stats.average.energy_kcal, 0)} kcal/ngày</strong>
                     {kcalComparison &&
                       (kcalComparison.diff === 0
                         ? ", bằng mục tiêu"
                         : `, ${kcalComparison.diff < 0 ? "thấp hơn" : "cao hơn"} mục tiêu ` +
-                          `${formatNumber(Math.abs(kcalComparison.diff), 0)} kcal (${formatNumber(Math.abs(kcalComparison.diff_pct))}%)`)}
+                          `${formatNumber(Math.abs(kcalComparison.diff), 0)} kcal (${formatNumber(
+                            Math.abs(kcalComparison.diff_pct)
+                          )}%)`)}
                     .
                   </p>
                 )}
@@ -291,16 +295,17 @@ export function DashboardView() {
                   <ProfileInvite missing={progress.missing_fields} />
                 </div>
               )}
-            </Panel>
+            </SectionStage>
           )}
 
           {progress && stats && (
-            <Panel title={`Cân nặng (${progress.period_label})`}>
+            <SectionStage title={`Cân nặng (${progress.period_label})`} accentColor="#d9822b">
               <p className="mb-3 text-sm text-muted">
                 Cân nặng gần nhất:{" "}
                 {progress.latest_weight ? (
                   <strong className="text-ink">
-                    {formatNumber(progress.latest_weight.weight_kg)} kg ({fullDate(progress.latest_weight.measured_on)})
+                    {formatNumber(progress.latest_weight.weight_kg)} kg (
+                    {fullDate(progress.latest_weight.measured_on)})
                   </strong>
                 ) : (
                   "chưa có lần đo"
@@ -309,23 +314,37 @@ export function DashboardView() {
               <WeightChart series={progress.series} />
               <p className="mt-2 text-sm text-ink">
                 {stats.weight_change
-                  ? `Thay đổi ${stats.weight_change.change_kg > 0 ? "+" : stats.weight_change.change_kg < 0 ? "−" : ""}` +
-                    `${formatNumber(Math.abs(stats.weight_change.change_kg))} kg: từ ${formatNumber(stats.weight_change.first_kg)} kg ` +
-                    `(${fullDate(stats.weight_change.first_date)}) đến ${formatNumber(stats.weight_change.last_kg)} kg ` +
+                  ? `Thay đổi ${
+                      stats.weight_change.change_kg > 0
+                        ? "+"
+                        : stats.weight_change.change_kg < 0
+                        ? "−"
+                        : ""
+                    }` +
+                    `${formatNumber(Math.abs(stats.weight_change.change_kg))} kg: từ ${formatNumber(
+                      stats.weight_change.first_kg
+                    )} kg ` +
+                    `(${fullDate(stats.weight_change.first_date)}) đến ${formatNumber(
+                      stats.weight_change.last_kg
+                    )} kg ` +
                     `(${fullDate(stats.weight_change.last_date)}), ${stats.weight_change.measurements_count} lần đo.`
                   : "Chưa đủ 2 lần đo trong khoảng này để tính thay đổi."}
               </p>
-            </Panel>
+            </SectionStage>
           )}
 
           {progress && stats && (
-            <Panel title="Ghi cân nặng">
-              <BodyMetricsPanel items={metrics} onChanged={refreshAll} onUnauthorized={handleUnauthorized} />
-            </Panel>
+            <SectionStage title="Ghi cân nặng" accentColor="#2ebd85">
+              <BodyMetricsPanel
+                items={metrics}
+                onChanged={refreshAll}
+                onUnauthorized={handleUnauthorized}
+              />
+            </SectionStage>
           )}
 
           {weeklyError && (
-            <div className="flex items-center justify-between rounded-control bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
+            <div className="flex items-center justify-between rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">
               <span>{weeklyError}</span>
               <Button size="sm" variant="secondary" onClick={() => loadWeekly(weekStart)}>
                 Thử lại
@@ -343,14 +362,6 @@ export function DashboardView() {
           )}
 
           <TrainingWeekCard onUnauthorized={handleUnauthorized} />
-
-          <div className="rounded-card bg-gradient-to-r from-brand-700 to-teal-700 p-6 text-white shadow-raised lg:col-span-2">
-            <h2 className="text-lg font-bold">Hỏi AI về tiến độ</h2>
-            <p className="mt-1 text-brand-50">Ví dụ: &quot;7 ngày gần nhất tôi ăn trung bình bao nhiêu calo?&quot;</p>
-            <Link href="/chat" className="mt-3 inline-block">
-              <Button variant="secondary">Bắt đầu chat →</Button>
-            </Link>
-          </div>
         </div>
       </PageContainer>
     </div>

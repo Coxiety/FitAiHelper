@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { authApi, type ProfileUpdateRequest } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
+import { AppHeader } from "@/components/layout/AppHeader";
 
 // ── Enum options ──────────────────────────────────────────────────────────────
 const ACTIVITY_OPTIONS = [
@@ -90,7 +91,8 @@ export function OnboardingForm() {
 
   // Bảo vệ trang: yêu cầu đăng nhập
   useEffect(() => {
-    if (!isAuthenticated) {
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) {
       router.replace("/login");
     }
   }, [isAuthenticated, router]);
@@ -183,28 +185,30 @@ export function OnboardingForm() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-teal-50 p-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-700 text-white text-xl font-bold">
-            F
+    <div className="min-h-screen bg-canvas">
+      <AppHeader />
+      <div className="flex items-center justify-center px-4 pb-12 pt-2">
+        <div className="w-full max-w-md">
+          {/* Header */}
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 -rotate-12 items-center justify-center rounded-[50%_50%_4px_50%] border-2 border-[#d9822b] bg-surface text-[#d9822b] shadow-2xs">
+              <span className="rotate-12 font-serif text-lg font-bold">TDEE</span>
+            </div>
+            <h1 className="text-2xl font-bold text-ink">Hồ sơ cơ thể &amp; Mục tiêu</h1>
+            <p className="mt-1 text-sm text-muted">
+              Bước {step + 1}/{TOTAL_STEPS} — giúp FitAI tính chính xác BMR &amp; TDEE
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Thiết lập hồ sơ</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Bước {step + 1}/{TOTAL_STEPS} — giúp FitAI tư vấn chính xác hơn
-          </p>
-        </div>
 
-        {/* Progress */}
-        <div className="mb-6 h-1.5 w-full rounded-full bg-gray-200">
-          <div
-            className="h-1.5 rounded-full bg-brand-700 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+          {/* Progress */}
+          <div className="mb-6 h-1.5 w-full rounded-full bg-line">
+            <div
+              className="h-1.5 rounded-full bg-[#d9822b] transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
 
-        <div className="rounded-2xl bg-white p-8 shadow-xl ring-1 ring-gray-100">
+          <div className="rounded-3xl border border-line bg-surface p-8 shadow-raised">
           {/* ── Bước 0: Thông tin cơ bản ────────────────────────────────── */}
           {step === 0 && (
             <div className="space-y-5">
@@ -382,10 +386,11 @@ export function OnboardingForm() {
           <button
             type="button"
             onClick={() => router.push("/dashboard")}
-            className="mt-4 w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            className="mt-4 w-full text-center text-sm text-muted hover:text-ink transition-colors"
           >
-            Bỏ qua, thiết lập sau
+            Quay về Tổng quan
           </button>
+          </div>
         </div>
       </div>
     </div>

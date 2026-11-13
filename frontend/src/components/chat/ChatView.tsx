@@ -43,7 +43,8 @@ export function ChatView() {
 
   // ── Auth Guard: Kiểm tra đăng nhập ─────────────────────────────────────────
   useEffect(() => {
-    if (!isAuthenticated) {
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) {
       router.replace("/login");
     }
   }, [isAuthenticated, router]);
@@ -208,20 +209,20 @@ export function ChatView() {
       <AppHeader />
       <div className="flex min-h-0 flex-1">
       {/* ── Sidebar: Danh sách phiên chat ─────────────────────────────────── */}
-      <aside className="hidden w-64 flex-col border-r border-gray-200 bg-white md:flex">
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-4">
-          <span className="text-sm font-semibold text-gray-900">Lịch sử chat</span>
+      <aside className="hidden w-64 flex-col border-r border-line bg-surface md:flex">
+        <div className="flex items-center justify-between border-b border-line px-4 py-4">
+          <span className="font-serif text-base font-semibold text-ink">Sổ lưu trữ hội thoại</span>
           <Button size="sm" variant="ghost" onClick={handleNewSession}>
             + Mới
           </Button>
         </div>
         <nav className="flex-1 overflow-y-auto p-2 space-y-1">
           {loadingSessions ? (
-            <p className="px-2 py-4 text-center text-xs text-gray-400">
+            <p className="px-2 py-4 text-center text-xs text-muted">
               Đang tải lịch sử...
             </p>
           ) : sessions.length === 0 ? (
-            <p className="px-2 py-4 text-center text-xs text-gray-400">
+            <p className="px-2 py-4 text-center text-xs text-muted">
               Chưa có cuộc trò chuyện nào
             </p>
           ) : (
@@ -246,8 +247,8 @@ export function ChatView() {
                     onClick={() => handleSelectSession(session.id)}
                     className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left text-sm transition-colors truncate block ${
                       currentSessionId === session.id
-                        ? "bg-brand-50 text-brand-700 font-medium"
-                        : "text-gray-600 hover:bg-gray-50"
+                        ? "bg-brand-100/80 text-brand-800 font-medium"
+                        : "text-muted hover:bg-surface-muted hover:text-ink"
                     }`}
                   >
                     {session.title ?? "Cuộc trò chuyện mới"}
@@ -257,7 +258,7 @@ export function ChatView() {
                     onClick={() => setConfirmDeleteId(session.id)}
                     aria-label="Xoá cuộc trò chuyện"
                     title="Xoá cuộc trò chuyện"
-                    className="shrink-0 rounded px-2 py-1 text-xs text-gray-400 hover:bg-red-50 hover:text-red-600"
+                    className="shrink-0 rounded px-2 py-1 text-xs text-muted hover:bg-red-50 hover:text-red-600"
                   >
                     ✕
                   </button>
@@ -271,14 +272,14 @@ export function ChatView() {
       {/* ── Khung chat chính ──────────────────────────────────────────────── */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-sm">
+        <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-3">
           <div className="flex items-center gap-2">
-            <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm font-semibold text-gray-800">
-              FitAI Advisor
+            <div className="h-2 w-2 rounded-full bg-brand-600" />
+            <span className="font-serif text-base font-semibold text-ink">
+              Bàn Tư Vấn Dinh Dưỡng &amp; Thể Hình
             </span>
-            <span className="text-xs text-gray-400 hidden sm:inline">
-              — Tư vấn thể dục & dinh dưỡng thông minh
+            <span className="text-xs text-muted hidden sm:inline">
+              — Đối chiếu dữ liệu Viện Dinh Dưỡng VN &amp; ISSN
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -294,23 +295,23 @@ export function ChatView() {
         <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
           {!currentSessionId && messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
-              <span aria-hidden className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-700 ring-1 ring-brand-200">
-                <Sparkles className="h-7 w-7" />
+              <span aria-hidden className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-line bg-surface text-brand-700 shadow-xs">
+                <Sparkles className="h-5 w-5" />
               </span>
-              <h2 className="text-xl font-bold text-ink">
-                FitAI Advisor
+              <h2 className="font-serif text-2xl font-semibold text-ink">
+                Hôm nay bạn cần phân tích chỉ số hay bữa ăn nào?
               </h2>
-              <p className="mt-2 max-w-sm text-sm text-muted">
-                Hãy hỏi về bài tập, lịch rèn luyện, chế độ dinh dưỡng hoặc mục tiêu cá nhân của bạn.
+              <p className="mt-2 max-w-md text-sm text-muted">
+                Đặt câu hỏi về lượng calo món ăn Việt, điều chỉnh macro theo mục tiêu, hoặc lộ trình tập luyện khoa học.
               </p>
               {/* Gợi ý câu hỏi: bấm chỉ điền vào ô nhập, không tự gửi */}
-              <div className="mt-6 grid w-full max-w-xl gap-2 sm:grid-cols-2">
+              <div className="mt-6 grid w-full max-w-xl gap-2.5 sm:grid-cols-2">
                 {SUGGESTIONS.map((q) => (
                   <button
                     key={q}
                     type="button"
                     onClick={() => inputRef.current?.setDraft(q)}
-                    className="rounded-control border border-line bg-surface px-4 py-3 text-left text-sm text-ink shadow-card transition-colors hover:border-brand-300 hover:bg-brand-50 outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
+                    className="rounded-(--radius-control) border border-line bg-surface px-4 py-3 text-left text-sm text-ink shadow-xs transition-colors hover:border-brand-600/40 hover:bg-brand-50/70 outline-none focus-visible:ring-2 focus-visible:ring-brand-600"
                   >
                     {q}
                   </button>
@@ -338,7 +339,7 @@ export function ChatView() {
         </div>
 
         {/* Ô nhập tin nhắn */}
-        <div className="border-t border-gray-200 bg-white px-4 py-4 md:px-8">
+        <div className="border-t border-line bg-surface px-4 py-4 md:px-8">
           <div className="mx-auto max-w-3xl">
             {error && (
               <div className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-600 ring-1 ring-red-200 flex items-center justify-between">
@@ -353,11 +354,8 @@ export function ChatView() {
               </div>
             )}
             <ChatInput ref={inputRef} onSend={handleSend} disabled={isSending} />
-            <p className="mt-2 text-center text-xs text-gray-400">
-              FitAI có thể mắc lỗi. Luôn tham vấn chuyên gia y tế cho các vấn đề sức khỏe hay chấn thương.
-            </p>
-            <p className="mt-1 text-center text-xs text-gray-400">
-              Hội thoại có thể được quản trị viên xem ở dạng ẩn danh để cải thiện chất lượng.
+            <p className="mt-2 text-center text-xs text-muted">
+              Các thông số mang tính tham khảo khoa học. Vui lòng tham vấn bác sĩ nếu bạn có bệnh lý nền.
             </p>
           </div>
         </div>

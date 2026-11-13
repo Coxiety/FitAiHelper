@@ -66,75 +66,75 @@ function SummaryCard({ summary }: { summary: DailySummary }) {
   return (
     <Card>
       <section aria-labelledby="day-summary-title">
-      <h2 id="day-summary-title" className="mb-4 text-base font-semibold text-ink">Tóm tắt ngày</h2>
+        <h2 id="day-summary-title" className="mb-4 text-base font-semibold text-ink">Tóm tắt ngày</h2>
 
-      {summary.incomplete_totals && (
-        <p className="mb-4 rounded-control bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Chưa đầy đủ số liệu: {summary.incomplete_entries} mục thiếu số liệu ({missing}). Tổng chỉ cộng các mục có
-          số liệu.
-        </p>
-      )}
+        {summary.incomplete_totals && (
+          <p className="mb-4 rounded-control bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Chưa đầy đủ số liệu: {summary.incomplete_entries} mục thiếu số liệu ({missing}). Tổng chỉ cộng các mục có
+            số liệu.
+          </p>
+        )}
 
-      {summary.is_complete && summary.target && summary.remaining ? (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {MACROS.map(({ key, label, unit, icon }) => {
-              const eaten = summary.eaten[key];
-              const target = summary.target![key];
-              const remaining = summary.remaining![key];
-              const pct = target > 0 ? Math.min(100, (eaten / target) * 100) : 0;
-              const over = target > 0 && remaining < 0;
-              return (
+        {summary.is_complete && summary.target && summary.remaining ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {MACROS.map(({ key, label, unit, icon }) => {
+                const eaten = summary.eaten[key];
+                const target = summary.target![key];
+                const remaining = summary.remaining![key];
+                const pct = target > 0 ? Math.min(100, (eaten / target) * 100) : 0;
+                const over = target > 0 && remaining < 0;
+                return (
+                  <div key={key} className="rounded-control border border-line bg-canvas p-3">
+                    <div className="flex items-center gap-2">
+                      <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-accent-100 text-accent-800">
+                        {icon}
+                      </span>
+                      <span className="text-sm font-medium text-muted">{label}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted">
+                      <span className="text-xl font-bold tabular-nums text-ink">{formatValue(eaten, unit)}</span>
+                      {" "}/ {formatValue(target, unit)}
+                    </p>
+                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-200" role="progressbar"
+                      aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
+                      <div className={cn("h-full rounded-full", over ? "bg-accent-500" : "bg-brand-600")}
+                        style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className={cn("mt-1.5 text-xs", over ? "inline-flex items-center gap-1 font-medium text-accent-800" : "text-muted")}>
+                      {over && <TriangleAlert aria-hidden className="h-3.5 w-3.5" />}
+                      {over ? `vượt ${formatValue(-remaining, unit)}` : `còn ${formatValue(remaining, unit)}`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted">{summary.carb_note}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {MACROS.map(({ key, label, unit, icon }) => (
                 <div key={key} className="rounded-control border border-line bg-canvas p-3">
                   <div className="flex items-center gap-2">
                     <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-accent-100 text-accent-800">
                       {icon}
                     </span>
-                    <span className="text-sm font-medium text-muted">{label}</span>
+                    <span className="text-xs font-medium text-muted">{label} đã ăn</span>
                   </div>
-                  <p className="mt-2 text-sm text-muted">
-                    <span className="text-xl font-bold tabular-nums text-ink">{formatValue(eaten, unit)}</span>
-                    {" "}/ {formatValue(target, unit)}
-                  </p>
-                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-gray-200" role="progressbar"
-                       aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label={label}>
-                    <div className={cn("h-full rounded-full", over ? "bg-accent-500" : "bg-brand-600")}
-                         style={{ width: `${pct}%` }} />
-                  </div>
-                  <p className={cn("mt-1.5 text-xs", over ? "inline-flex items-center gap-1 font-medium text-accent-800" : "text-muted")}>
-                    {over && <TriangleAlert aria-hidden className="h-3.5 w-3.5" />}
-                    {over ? `vượt ${formatValue(-remaining, unit)}` : `còn ${formatValue(remaining, unit)}`}
-                  </p>
+                  <p className="mt-2 text-lg font-bold tabular-nums text-ink">{formatValue(summary.eaten[key], unit)}</p>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+            <p className="rounded-control bg-brand-50 px-3 py-2 text-sm text-brand-900">
+              Hoàn tất hồ sơ (tuổi, giới tính, chiều cao, cân nặng, mức vận động, mục tiêu) để so với mục tiêu calo và
+              macro của bạn.{" "}
+              <Link href="/onboarding" className="font-medium underline">
+                Hoàn tất hồ sơ →
+              </Link>
+            </p>
           </div>
-          <p className="text-xs text-muted">{summary.carb_note}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {MACROS.map(({ key, label, unit, icon }) => (
-              <div key={key} className="rounded-control border border-line bg-canvas p-3">
-                <div className="flex items-center gap-2">
-                  <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-control bg-accent-100 text-accent-800">
-                    {icon}
-                  </span>
-                  <span className="text-xs font-medium text-muted">{label} đã ăn</span>
-                </div>
-                <p className="mt-2 text-lg font-bold tabular-nums text-ink">{formatValue(summary.eaten[key], unit)}</p>
-              </div>
-            ))}
-          </div>
-          <p className="rounded-control bg-brand-50 px-3 py-2 text-sm text-brand-900">
-            Hoàn tất hồ sơ (tuổi, giới tính, chiều cao, cân nặng, mức vận động, mục tiêu) để so với mục tiêu calo và
-            macro của bạn.{" "}
-            <Link href="/onboarding" className="font-medium underline">
-              Hoàn tất hồ sơ →
-            </Link>
-          </p>
-        </div>
-      )}
+        )}
       </section>
     </Card>
   );
@@ -197,7 +197,7 @@ function MealRow({
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-600">Xoá mục này?</span>
             <Button size="sm" variant="danger" loading={busy}
-                    onClick={() => run(() => mealsApi.remove(entry.id), "Không xoá được. Vui lòng thử lại.")}>
+              onClick={() => run(() => mealsApi.remove(entry.id), "Không xoá được. Vui lòng thử lại.")}>
               Xoá
             </Button>
             <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirmDelete(false)}>
@@ -220,7 +220,7 @@ function MealRow({
           />
           <span className="text-sm text-gray-500">g</span>
           <Button size="sm" loading={busy} disabled={!gramsValid}
-                  onClick={() => run(() => mealsApi.update(entry.id, { grams }), "Không sửa được. Vui lòng thử lại.")}>
+            onClick={() => run(() => mealsApi.update(entry.id, { grams }), "Không sửa được. Vui lòng thử lại.")}>
             Lưu
           </Button>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => setEditing(false)}>
@@ -259,7 +259,8 @@ export function MealLogView() {
   const loadSeq = useRef(0);
 
   useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("access_token");
+    if (!isAuthenticated && !hasToken) router.replace("/login");
   }, [isAuthenticated, router]);
 
   const load = useCallback(async (day: string) => {
@@ -366,7 +367,7 @@ export function MealLogView() {
                         )}
                       </div>
                       <Button size="sm" variant="secondary" onClick={() => openAdd(value)}
-                              disabled={loading && !dayMeals} aria-label={`Thêm thực phẩm vào ${label.toLowerCase()}`}>
+                        disabled={loading && !dayMeals} aria-label={`Thêm thực phẩm vào ${label.toLowerCase()}`}>
                         <Plus aria-hidden className="h-4 w-4" />
                         Thêm
                       </Button>
@@ -377,7 +378,7 @@ export function MealLogView() {
                       <ul className="mt-2 divide-y divide-gray-100">
                         {entries.map((entry) => (
                           <MealRow key={entry.id} entry={entry} onChanged={() => load(date)}
-                                   onUnauthorized={handleUnauthorized} />
+                            onUnauthorized={handleUnauthorized} />
                         ))}
                       </ul>
                     )}
