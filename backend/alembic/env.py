@@ -10,7 +10,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # ─── Import cấu hình project ─────────────────────────────────────────
-from core.config import settings
+from core.config import build_sync_database_url, settings
 from core.database import Base
 
 # ─── Import TẤT CẢ models để Alembic "thấy" chúng ──────────────────
@@ -31,9 +31,14 @@ from models.training_progress import ProgramDayCompletion, ProgramEnrollment  # 
 config = context.config
 
 # Ghi đè sqlalchemy.url bằng DATABASE_URL thật từ .env
-# Phải chuyển từ asyncpg → psycopg2 vì Alembic chạy sync
-sync_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2")
-config.set_main_option("sqlalchemy.url", sync_url)
+# Chỉ ưu tiên DATABASE_URL_UNPOOLED khi DATABASE_URL đang trỏ Neon; chuyển sang psycopg2
+raw_sync_url = (
+    settings.DATABASE_URL_UNPOOLED
+    if settings.DATABASE_URL_UNPOOLED and "neon.tech" in settings.DATABASE_URL
+    else settings.DATABASE_URL
+)
+sync_url = build_sync_database_url(raw_sync_url)
+config.set_main_option("sqlalchemy.url", sync_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 import re
 import unicodedata
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from sqlalchemy import and_, case, func, select, tuple_
@@ -39,13 +40,16 @@ from services.foods.aliases import (
     FoodRef,
     Meaning,
     expand,
+    expand_en,
     find_alias,
     find_ambiguous,
     find_cooked_dish,
 )
 from services.foods.normalize import normalize_search
 from services.foods.parser import NUTRIENT_FIELDS
+from services.foods.preparation import FoodPreparation
 from services.foods.sources import ADMIN_MANUAL, USDA_SR, VN2007, source_code
+from services.foods.translator import translate_food_query
 
 logger = logging.getLogger(__name__)
 
@@ -285,17 +289,62 @@ async def search_foods(db: AsyncSession, query: str, limit: int = 5) -> list[Foo
                 continue
             seen.add(food.id)
             keyed.append((r, 1, FoodMatch(food=food, level=r[0], matched_via=label)))
+    for alt_tokens, label in expand_en(tokens):
+        for food in await _candidates(db, alt_tokens):
+            r = rank(food, alt_tokens)
+            if food.id in seen or r[0] > MATCH_ALL_WORDS:
+                continue
+            seen.add(food.id)
+            keyed.append((r, 1, FoodMatch(food=food, level=r[0], matched_via=label)))
     if not keyed and not alias_matches:
-        return await _suggestions(db, tokens)
+        for alt_tokens, label in await translate_food_query(query):
+            for food in await _candidates(db, alt_tokens):
+                r = rank(food, alt_tokens)
+                if food.id in seen or r[0] > MATCH_ALL_WORDS:
+                    continue
+                seen.add(food.id)
+                keyed.append((r, 2, FoodMatch(food=food, level=r[0], matched_via=label)))
+    if not keyed and not alias_matches:
+        return await _suggestions(db, tokens, query)
     # Cùng mức khớp: kết quả trực tiếp trước kết quả qua từ đồng nghĩa (không bị ghi đè)
     keyed.sort(key=lambda k: (k[0][0], k[1], k[0][1:]))
     # Mục của từ khoá đã duyệt luôn được trả đủ (mọi trạng thái/nguồn), không bị cắt bởi `limit`
     return alias_matches + [m for _, _, m in keyed[:max(limit - len(alias_matches), 0)]]
 
 
-async def _suggestions(db: AsyncSession, tokens: list[str]) -> list[FoodMatch]:
+_DRIED_ACCENTED = frozenset({"khô", "sấy", "ruốc", "chà", "bột"})
+_DRIED_ASCII = frozenset({"kho", "say", "ruoc", "bot", "dried", "powder", "jerky"})
+_RAW_ACCENTED = frozenset({"sống", "tươi"})
+_RAW_ASCII = frozenset({"song", "tuoi", "raw", "fresh"})
+
+
+def _query_has_keyword(query: str, tokens: list[str], accented_kw: frozenset[str], ascii_kw: frozenset[str]) -> bool:
+    """Kiểm tra truy vấn có yêu cầu trạng thái (khô/sống) không; phân biệt có dấu ("kho" ≠ "khô")."""
+    acc = set(accent_words(query))
+    if acc & accented_kw:
+        return True
+    has_non_ascii = any(ord(ch) > 127 for ch in query)
+    if not has_non_ascii and (set(tokens) & ascii_kw):
+        return True
+    return bool(set(tokens) & (ascii_kw - {"kho"}))
+
+
+def _prep_value(food: Food) -> FoodPreparation:
+    prep = getattr(food, "preparation", None)
+    if prep is None:
+        return FoodPreparation.UNKNOWN
+    if isinstance(prep, FoodPreparation):
+        return prep
+    try:
+        return FoodPreparation(prep)
+    except ValueError:
+        return FoodPreparation.UNKNOWN
+
+
+async def _suggestions(db: AsyncSession, tokens: list[str], query: str = "") -> list[FoodMatch]:
     """Tìm lại với từng từ riêng lẻ; mục khớp nhiều từ hơn xếp trước. Rỗng nếu truy vấn chỉ
-    có một từ (đã tìm rồi) hoặc không từ nào khớp."""
+    có một từ (đã tìm rồi) hoặc không từ nào khớp. Không đẩy đồ khô lên trước đồ tươi/chín
+    khi người dùng không hỏi đồ khô."""
     singles = [t for t in dict.fromkeys(tokens) if len(t) >= MIN_SUGGESTION_TOKEN_LENGTH and not t.isdigit()]
     if any(t not in COLOR_TOKENS for t in singles):
         singles = [t for t in singles if t not in COLOR_TOKENS]   # "cơm trắng" không kéo "Củ cải trắng"
@@ -306,12 +355,57 @@ async def _suggestions(db: AsyncSession, tokens: list[str]) -> list[FoodMatch]:
         for food in await _candidates(db, [token]):
             found.setdefault(food.id, (food, []))[1].append(token)
 
+    allow_dried = _query_has_keyword(query, tokens, _DRIED_ACCENTED, _DRIED_ASCII)
+
     def key(item: tuple[Food, list[str]]) -> tuple:
         food, matched = item
-        return (-len(matched), min(rank(food, [t]) for t in matched))
+        dried_penalty = 0 if allow_dried else int(_prep_value(food) == FoodPreparation.DRIED)
+        return (-len(matched), dried_penalty, min(rank(food, [t]) for t in matched))
 
     ranked = sorted(found.values(), key=key)[:SUGGESTION_LIMIT]
     return [FoodMatch(food=f, level=rank(f, tokens)[0], is_suggestion=True) for f, _ in ranked]
+
+
+async def resolve_best_food(
+    db: AsyncSession,
+    food_query: str,
+    *,
+    limit: int = 5,
+    search_fn: Callable[..., Awaitable[list[FoodMatch]]] | None = None,
+) -> tuple[Food | None, str | None]:
+    """Chọn thực phẩm phù hợp nhất để ghi/đối chiếu bữa ăn, tránh chọn nhầm đồ khô hoặc đồ sống
+    khi người dùng không yêu cầu và xử lý các trường hợp đa nghĩa / chỉ có nguyên liệu sống."""
+    searcher = search_fn or search_foods
+    tokens = prepare_query(food_query)
+    wants_dried = _query_has_keyword(food_query, tokens, _DRIED_ACCENTED, _DRIED_ASCII)
+    wants_raw = _query_has_keyword(food_query, tokens, _RAW_ACCENTED, _RAW_ASCII)
+
+    def pick_key(idx: int, match: FoodMatch) -> tuple:
+        prep = _prep_value(match.food)
+        dried_penalty = 0 if wants_dried else int(prep == FoodPreparation.DRIED)
+        prep_rank = 0 if (wants_dried or wants_raw) else int(prep != FoodPreparation.COOKED)
+        return (match.is_suggestion, match.level, dried_penalty, prep_rank, idx)
+
+    try:
+        matches = await searcher(db, food_query, limit=limit)
+        if not matches:
+            return None, None
+        _, chosen = min(enumerate(matches), key=lambda pair: pick_key(*pair))
+        return chosen.food, chosen.note
+    except AmbiguousFoodQuery as exc:
+        candidates = [(m.label, f) for m in exc.meanings for f in m.foods]
+        if not wants_dried:
+            non_dried = [(lbl, f) for lbl, f in candidates if _prep_value(f) != FoodPreparation.DRIED]
+            if non_dried:
+                candidates = non_dried
+        if candidates:
+            label, food = candidates[0]
+            return food, f"từ đa nghĩa → chọn '{label}'"
+        return None, None
+    except RawOnlyFoodQuery as exc:
+        if exc.foods:
+            return exc.foods[0], "ước tính theo nguyên liệu sống trong DB"
+        return None, None
 
 
 def scale(value: float | None, grams: float) -> float | None:

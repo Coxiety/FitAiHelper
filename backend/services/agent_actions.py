@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.meal_log import MealType
 from services import meals as meal_service
 from services import progress as progress_service
-from services.foods.lookup import AmbiguousFoodQuery, RawOnlyFoodQuery, search_foods
+from services.foods.lookup import resolve_best_food
 
 
 def _normalize_meal_type(raw: str | None) -> MealType:
@@ -35,20 +35,7 @@ async def log_meal_for_user(
     meal_type: str = "phu",
 ) -> dict:
     """Tra món ăn trong DB rồi ghi một mục MealLog cho user_id."""
-    food = None
-    try:
-        matches = await search_foods(db, food_query, limit=3)
-        non_suggestions = [m for m in matches if not m.is_suggestion]
-        chosen = non_suggestions[0] if non_suggestions else (matches[0] if matches else None)
-        food = chosen.food if chosen else None
-    except AmbiguousFoodQuery as exc:
-        for meaning in exc.meanings:
-            if meaning.foods:
-                food = meaning.foods[0]
-                break
-    except RawOnlyFoodQuery as exc:
-        if exc.raw_foods:
-            food = exc.raw_foods[0]
+    food, _ = await resolve_best_food(db, food_query)
 
     if food is None:
         raise ValueError(f"Không tìm thấy thực phẩm '{food_query}' trong từ điển FitAI.")

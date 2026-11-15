@@ -95,9 +95,28 @@ if (-not (Test-Path (Join-Path $SCRIPT_DIR "frontend\node_modules\next"))) {
     Pop-Location
 }
 
-# 1d. Kiểm tra PostgreSQL 16 Portable
+# 1d. Kiểm tra PostgreSQL 16 Portable (bỏ qua nếu backend/.env đã trỏ DB ngoài như Neon)
+$ENV_FILE = Join-Path $SCRIPT_DIR "backend\.env"
+$EXISTING_SECRET = ""
+$EXISTING_API_KEY = ""
+$EXISTING_BOT_TOKEN = ""
+$EXISTING_DB_URL = ""
+$EXISTING_DB_UNPOOLED = ""
+
+if (Test-Path $ENV_FILE) {
+    foreach ($line in (Get-Content $ENV_FILE -Encoding UTF8)) {
+        if ($line -match "^SECRET_KEY=(.+)$") { $EXISTING_SECRET = $Matches[1].Trim() }
+        if ($line -match "^GOOGLE_API_KEY=(.+)$") { $EXISTING_API_KEY = $Matches[1].Trim() }
+        if ($line -match "^TELEGRAM_BOT_TOKEN=(.+)$") { $EXISTING_BOT_TOKEN = $Matches[1].Trim() }
+        if ($line -match "^DATABASE_URL=(.+)$") { $EXISTING_DB_URL = $Matches[1].Trim().Trim('"').Trim("'") }
+        if ($line -match "^DATABASE_URL_UNPOOLED=(.+)$") { $EXISTING_DB_UNPOOLED = $Matches[1].Trim().Trim('"').Trim("'") }
+    }
+}
+
+$USE_EXTERNAL_DB = (-not [string]::IsNullOrWhiteSpace($EXISTING_DB_URL)) -and ($EXISTING_DB_URL -notmatch '@(127\.0\.0\.1|localhost|db)(:|/)')
+
 $PG_CTL = Join-Path $PG_BIN "pg_ctl.exe"
-if (-not (Test-Path $PG_CTL)) {
+if (-not $USE_EXTERNAL_DB -and -not (Test-Path $PG_CTL)) {
     Write-Host "${BLUE}⬇️  Đang tải PostgreSQL 16.4 Portable cho Windows...${NC}"
     $pgZip = Join-Path $env:TEMP "postgresql-16.4-1-windows-x64-binaries.zip"
     curl.exe -L --progress-bar -o $pgZip "https://get.enterprisedb.com/postgresql/postgresql-16.4-1-windows-x64-binaries.zip"
@@ -126,17 +145,7 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 # 2. Cấu hình biến môi trường (backend/.env)
 # ------------------------------------------------------------------------------
-$ENV_FILE = Join-Path $SCRIPT_DIR "backend\.env"
 $NEED_ENV_SETUP = $false
-$EXISTING_SECRET = ""
-$EXISTING_API_KEY = ""
-
-if (Test-Path $ENV_FILE) {
-    foreach ($line in (Get-Content $ENV_FILE -Encoding UTF8)) {
-        if ($line -match "^SECRET_KEY=(.+)$") { $EXISTING_SECRET = $Matches[1].Trim() }
-        if ($line -match "^GOOGLE_API_KEY=(.+)$") { $EXISTING_API_KEY = $Matches[1].Trim() }
-    }
-}
 
 if ([string]::IsNullOrWhiteSpace($EXISTING_SECRET) -or
     [string]::IsNullOrWhiteSpace($EXISTING_API_KEY) -or
@@ -166,16 +175,23 @@ if ($NEED_ENV_SETUP) {
         }
     }
 
-    $envContent = @(
+    $envLines = @(
         "# Cấu hình tự động sinh bởi run_windows.bat",
         "# Lưu ý: Không để các dòng biến trống (key=) vì pydantic-settings sẽ báo lỗi.",
         "SECRET_KEY=$EXISTING_SECRET",
         "GOOGLE_API_KEY=$EXISTING_API_KEY",
-        "DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/fitai_db",
-        "CHROMA_HOST=127.0.0.1",
-        "CHROMA_PORT=8001",
         'BACKEND_CORS_ORIGINS=["http://localhost:3000"]'
-    ) -join "`n"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($EXISTING_DB_URL)) {
+        $envLines += "DATABASE_URL=$EXISTING_DB_URL"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($EXISTING_DB_UNPOOLED)) {
+        $envLines += "DATABASE_URL_UNPOOLED=$EXISTING_DB_UNPOOLED"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($EXISTING_BOT_TOKEN)) {
+        $envLines += "TELEGRAM_BOT_TOKEN=$EXISTING_BOT_TOKEN"
+    }
+    $envContent = $envLines -join "`n"
     [System.IO.File]::WriteAllText($ENV_FILE, $envContent + "`n", (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "${GREEN}✅ Đã lưu cấu hình chuẩn vào backend/.env!${NC}"
     Write-Host ""
@@ -183,6 +199,13 @@ if ($NEED_ENV_SETUP) {
     Write-Host "${GREEN}✅ Đã tìm thấy cấu hình hợp lệ tại backend/.env.${NC}"
     Write-Host ""
 }
+
+# Ghi đè cấu hình kết nối trong phiên chạy Windows Native (giữ backend/.env tương thích cả Docker/Mac)
+if (-not $USE_EXTERNAL_DB) {
+    $env:DATABASE_URL = "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/fitai_db"
+}
+$env:CHROMA_HOST = "127.0.0.1"
+$env:CHROMA_PORT = "8001"
 
 # ------------------------------------------------------------------------------
 # 3. Khởi động các dịch vụ (PostgreSQL, ChromaDB, Backend, Frontend)
@@ -198,36 +221,40 @@ function Start-DetachedProcess {
         ProcessStartupInformation = $startup
     } | Out-Null
 }
-# 3a. PostgreSQL (port 5432)
+# 3a. PostgreSQL (port 5432 hoặc DB ngoài như Neon)
 $PG_DATA = Join-Path $SCRIPT_DIR "postgres_data"
 $PG_LOG  = Join-Path $env:TEMP "fitai_postgres.log"
-if (-not (Test-Path (Join-Path $PG_DATA "PG_VERSION"))) {
-    Write-Host "${BLUE}🗄️  Khởi tạo cụm dữ liệu PostgreSQL lần đầu...${NC}"
-    $pwFile = Join-Path $env:TEMP "fitai_pgpass.txt"
-    [System.IO.File]::WriteAllText($pwFile, "postgres", [System.Text.Encoding]::ASCII)
-    & "$PG_BIN\initdb.exe" -D $PG_DATA -U postgres -E UTF8 --locale=C -A scram-sha-256 --pwfile=$pwFile | Out-Null
-    Remove-Item $pwFile -Force -ErrorAction SilentlyContinue
-}
-
-Write-Host "   [1/4] PostgreSQL (port 5432)..."
-& "$PG_BIN\pg_isready.exe" -h 127.0.0.1 -p 5432 -U postgres 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Get-Process postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
-    Remove-Item (Join-Path $PG_DATA "postmaster.pid") -Force -ErrorAction SilentlyContinue
-    Remove-Item (Join-Path $PG_DATA "postgres.log*") -Force -ErrorAction SilentlyContinue
-    Start-DetachedProcess -CommandLine "cmd.exe /c `"`"$PG_BIN\postgres.exe`" -D `"$PG_DATA`" -p 5432 > `"$PG_LOG`" 2>&1`"" -WorkingDirectory $SCRIPT_DIR
-    for ($w = 0; $w -lt 30; $w++) {
-        & "$PG_BIN\pg_isready.exe" -h 127.0.0.1 -p 5432 -U postgres 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { break }
-        Start-Sleep -Milliseconds 500
+if ($USE_EXTERNAL_DB) {
+    Write-Host "   [1/4] PostgreSQL: Dùng database ngoài từ backend/.env (Neon/Cloud)..."
+} else {
+    if (-not (Test-Path (Join-Path $PG_DATA "PG_VERSION"))) {
+        Write-Host "${BLUE}🗄️  Khởi tạo cụm dữ liệu PostgreSQL lần đầu...${NC}"
+        $pwFile = Join-Path $env:TEMP "fitai_pgpass.txt"
+        [System.IO.File]::WriteAllText($pwFile, "postgres", [System.Text.Encoding]::ASCII)
+        & "$PG_BIN\initdb.exe" -D $PG_DATA -U postgres -E UTF8 --locale=C -A scram-sha-256 --pwfile=$pwFile | Out-Null
+        Remove-Item $pwFile -Force -ErrorAction SilentlyContinue
     }
-}
 
-$env:PGPASSWORD = "postgres"
-$dbExists = & "$PG_BIN\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='fitai_db'" 2>$null
-if (($dbExists | Out-String).Trim() -ne "1") {
-    & "$PG_BIN\createdb.exe" -h 127.0.0.1 -p 5432 -U postgres fitai_db
+    Write-Host "   [1/4] PostgreSQL (port 5432)..."
+    & "$PG_BIN\pg_isready.exe" -h 127.0.0.1 -p 5432 -U postgres 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Get-Process postgres -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+        Remove-Item (Join-Path $PG_DATA "postmaster.pid") -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $PG_DATA "postgres.log*") -Force -ErrorAction SilentlyContinue
+        Start-DetachedProcess -CommandLine "cmd.exe /c `"`"$PG_BIN\postgres.exe`" -D `"$PG_DATA`" -p 5432 > `"$PG_LOG`" 2>&1`"" -WorkingDirectory $SCRIPT_DIR
+        for ($w = 0; $w -lt 30; $w++) {
+            & "$PG_BIN\pg_isready.exe" -h 127.0.0.1 -p 5432 -U postgres 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
+    $env:PGPASSWORD = "postgres"
+    $dbExists = & "$PG_BIN\psql.exe" -h 127.0.0.1 -p 5432 -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='fitai_db'" 2>$null
+    if (($dbExists | Out-String).Trim() -ne "1") {
+        & "$PG_BIN\createdb.exe" -h 127.0.0.1 -p 5432 -U postgres fitai_db
+    }
 }
 
 # 3b. ChromaDB (port 8001 — ép bind IPv4 127.0.0.1 để khớp CHROMA_HOST=127.0.0.1 trong backend/.env)
@@ -474,7 +501,12 @@ switch ($ACTION_ANS) {
                 Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue
             }
         }
-        & $PG_CTL -D $PG_DATA stop -m fast 2>&1 | Out-Null
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*scripts.run_telegram_bot*" } | ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+        if (-not $USE_EXTERNAL_DB -and (Test-Path (Join-Path $PG_DATA "postmaster.pid"))) {
+            & $PG_CTL -D $PG_DATA stop -m fast 2>&1 | Out-Null
+        }
         Write-Host "${GREEN}✅ Đã dừng toàn bộ dịch vụ.${NC}"
         Start-Sleep -Seconds 2
     }

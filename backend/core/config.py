@@ -1,6 +1,44 @@
+import os
 from typing import List
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, field_validator, model_validator
+
+
+def _rewrite_db_url(raw_url: str, *, driver: str) -> str:
+    """Chuẩn hoá PostgreSQL URL (bao gồm Neon sslmode/channel_binding) theo driver."""
+    url = raw_url.strip()
+    if not url:
+        return url
+    parsed = urlparse(url)
+    base_scheme = parsed.scheme.split("+", 1)[0]
+    if base_scheme not in ("postgres", "postgresql"):
+        return url
+
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    if driver == "asyncpg":
+        sslmode = (qs.pop("sslmode", [""])[0] or "").lower()
+        qs.pop("channel_binding", None)
+        if sslmode in ("require", "verify-ca", "verify-full") and "ssl" not in qs:
+            qs["ssl"] = ["require"]
+    elif driver == "psycopg2":
+        ssl_val = (qs.pop("ssl", [""])[0] or "").lower()
+        if ssl_val in ("require", "true", "1") and "sslmode" not in qs:
+            qs["sslmode"] = ["require"]
+
+    return urlunparse((
+        f"postgresql+{driver}",
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        urlencode(qs, doseq=True),
+        parsed.fragment,
+    ))
+
+
+def build_sync_database_url(raw_url: str) -> str:
+    """Chuyển DATABASE_URL sang driver sync psycopg2 cho Alembic."""
+    return _rewrite_db_url(raw_url, driver="psycopg2")
 
 
 class Settings(BaseSettings):
@@ -35,12 +73,33 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "fitai_db"
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/fitai_db"
+    DATABASE_URL_UNPOOLED: str = ""
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if isinstance(v, str) and v.strip():
+            return _rewrite_db_url(v, driver="asyncpg")
+        return v
+
+    @model_validator(mode="after")
+    def fallback_docker_database_url(self):
+        # Khi chạy trong Docker mà backend/.env không khai báo DATABASE_URL thì trỏ về service `db`
+        if ("DATABASE_URL" not in self.model_fields_set or not self.DATABASE_URL.strip()) and os.path.exists("/.dockerenv"):
+            self.DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@db:5432/{self.POSTGRES_DB}"
+        return self
 
     # Google Gemini AI
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     # Đổi model embedding thì phải chạy lại ingest với --reset (vector cũ không còn so sánh được)
     EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+
+    # Dịch máy cục bộ (MarianMT / OPUS-MT) hỗ trợ tra cứu món ăn 2 chiều Việt <-> Anh khi không khớp từ khoá
+    FOOD_NMT_ENABLED: bool = True
+    FOOD_NMT_VI_EN_MODEL: str = "Helsinki-NLP/opus-mt-vi-en"
+    FOOD_NMT_EN_VI_MODEL: str = "Helsinki-NLP/opus-mt-en-vi"
+    FOOD_NMT_MIN_CONFIDENCE: float = 0.55
 
     # ChromaDB
     CHROMA_HOST: str = "localhost"

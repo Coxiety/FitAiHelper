@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # FitAI — Script khởi chạy tự động bằng 1 cú nhấp đúp trên macOS (.command)
-# Giữ nguyên 100% kiến trúc Docker Compose & mã nguồn dự án.
+# Bản Docker Compose — đồng bộ tính năng với run_windows.bat.
 # ==============================================================================
 
 set -u
@@ -92,54 +92,78 @@ fi
 echo -e "${GREEN}✅ Docker đã sẵn sàng!${NC}"
 echo ""
 
+# Nếu trước đó đã chạy bản Native (run_mac_native.command), dọn symlink mountpoint để Docker mount sạch
+for link_dir in "backend/data" "backend/uploads" "backend/eval_results"; do
+    if [ -L "$link_dir" ]; then
+        rm -f "$link_dir"
+    fi
+done
+
+# Kiểm tra xung đột cổng từ tiến trình ngoài Docker (nếu có)
+for p in 3000 8000 8001; do
+    non_docker_pids="$(lsof -iTCP:"$p" -sTCP:LISTEN -n -P 2>/dev/null | awk 'NR>1 && $1 !~ /^com\.docke/ {print $2}' | sort -u || true)"
+    if [ -n "$non_docker_pids" ]; then
+        echo -e "${YELLOW}⚠️  Phát hiện tiến trình ngoài Docker đang chiếm cổng ${p} (PID: ${non_docker_pids//$'\n'/, }).${NC}"
+        read -r -p "Bạn có muốn dừng tiến trình đó để tránh xung đột cổng với Docker không? (Y/n): " KILL_CONFLICT
+        KILL_CONFLICT="${KILL_CONFLICT:-Y}"
+        if [[ "$KILL_CONFLICT" =~ ^[Yy]$ ]]; then
+            # shellcheck disable=SC2086
+            kill $non_docker_pids 2>/dev/null || true
+            sleep 1
+        fi
+    fi
+done
+
 # ------------------------------------------------------------------------------
 # 2. Cấu hình biến môi trường (backend/.env)
 # ------------------------------------------------------------------------------
 ENV_FILE="backend/.env"
 NEED_ENV_SETUP=0
+EXISTING_SECRET=""
+EXISTING_API_KEY=""
+EXISTING_BOT_TOKEN=""
 
-if [ ! -f "$ENV_FILE" ]; then
+if [ -f "$ENV_FILE" ]; then
+    EXISTING_SECRET="$(grep -E "^SECRET_KEY=" "$ENV_FILE" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+    EXISTING_API_KEY="$(grep -E "^GOOGLE_API_KEY=" "$ENV_FILE" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+    EXISTING_BOT_TOKEN="$(grep -E "^TELEGRAM_BOT_TOKEN=" "$ENV_FILE" | head -n1 | cut -d'=' -f2- | tr -d '\r' | xargs || true)"
+fi
+
+if [ -z "$EXISTING_SECRET" ] || [ -z "$EXISTING_API_KEY" ] || [ "$EXISTING_API_KEY" = "your-gemini-api-key-here" ]; then
     NEED_ENV_SETUP=1
-else
-    # Kiểm tra SECRET_KEY và GOOGLE_API_KEY đã có chưa
-    if ! grep -qE "^SECRET_KEY=.+" "$ENV_FILE" || ! grep -qE "^GOOGLE_API_KEY=.+" "$ENV_FILE"; then
-        NEED_ENV_SETUP=1
-    fi
 fi
 
 if [ "$NEED_ENV_SETUP" -eq 1 ]; then
     echo -e "${BLUE}${BOLD}🔧 Cấu hình môi trường lần đầu (backend/.env)${NC}"
-
-    EXISTING_SECRET=""
-    EXISTING_API_KEY=""
-    if [ -f "$ENV_FILE" ]; then
-        EXISTING_SECRET="$(grep -E "^SECRET_KEY=" "$ENV_FILE" | head -n1 | cut -d'=' -f2- || true)"
-        EXISTING_API_KEY="$(grep -E "^GOOGLE_API_KEY=" "$ENV_FILE" | head -n1 | cut -d'=' -f2- || true)"
-    fi
 
     if [ -z "$EXISTING_SECRET" ]; then
         EXISTING_SECRET="$(openssl rand -hex 32)"
         echo -e "${GREEN}🔑 Đã tự động sinh SECRET_KEY bảo mật ngẫu nhiên.${NC}"
     fi
 
-    while [ -z "$EXISTING_API_KEY" ]; do
+    while [ -z "$EXISTING_API_KEY" ] || [ "$EXISTING_API_KEY" = "your-gemini-api-key-here" ]; do
         echo -e "${YELLOW}👉 Dự án cần GOOGLE_API_KEY (Gemini API Key) lấy tại https://aistudio.google.com/apikey${NC}"
-        read -r -p "Nhập GOOGLE_API_KEY của bạn: " INPUT_KEY
+        read -r -p "Nhập GOOGLE_API_KEY của bạn (hoặc nhấn Enter để dùng khóa tạm test giao diện): " INPUT_KEY
         INPUT_KEY="$(echo "$INPUT_KEY" | xargs)"
         if [ -n "$INPUT_KEY" ]; then
             EXISTING_API_KEY="$INPUT_KEY"
         else
-            echo -e "${RED}❌ GOOGLE_API_KEY không được để trống!${NC}"
+            EXISTING_API_KEY="your-gemini-api-key-here"
+            echo -e "${YELLOW}⚠️  Đang dùng GOOGLE_API_KEY tạm thời (giao diện chạy bình thường, cần điền key thật vào backend/.env để chat AI).${NC}"
+            break
         fi
     done
 
-    cat > "$ENV_FILE" <<EOF
-# Cấu hình tự động sinh bởi run_mac.command
-# Lưu ý: Không để các dòng biến trống (key=) vì pydantic-settings sẽ báo lỗi.
-SECRET_KEY=${EXISTING_SECRET}
-GOOGLE_API_KEY=${EXISTING_API_KEY}
-BACKEND_CORS_ORIGINS=["http://localhost:3000"]
-EOF
+    {
+        echo "# Cấu hình tự động sinh bởi run_mac.command"
+        echo "# Lưu ý: Không để các dòng biến trống (key=) vì pydantic-settings sẽ báo lỗi."
+        echo "SECRET_KEY=${EXISTING_SECRET}"
+        echo "GOOGLE_API_KEY=${EXISTING_API_KEY}"
+        echo 'BACKEND_CORS_ORIGINS=["http://localhost:3000"]'
+        if [ -n "$EXISTING_BOT_TOKEN" ]; then
+            echo "TELEGRAM_BOT_TOKEN=${EXISTING_BOT_TOKEN}"
+        fi
+    } > "$ENV_FILE"
     echo -e "${GREEN}✅ Đã lưu cấu hình chuẩn vào ${ENV_FILE}!${NC}"
     echo ""
 else
@@ -157,9 +181,30 @@ if ! docker compose up -d --build; then
     exit 1
 fi
 
+# Khởi chạy Telegram Bot (tùy chọn — chỉ chạy khi có TELEGRAM_BOT_TOKEN trong backend/.env)
+if [ -n "$EXISTING_BOT_TOKEN" ]; then
+    BOT_RUNNING="$(docker compose exec -T backend python -c "
+import glob
+found = False
+for p in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        with open(p, 'rb') as f:
+            if b'scripts.run_telegram_bot' in f.read():
+                found = True
+                break
+    except Exception:
+        pass
+print('1' if found else '0')
+" 2>/dev/null | tail -n 1)"
+    if [ "$BOT_RUNNING" != "1" ]; then
+        echo -e "${BLUE}🤖 Đang khởi chạy Telegram Bot (Long Polling)...${NC}"
+        docker compose exec -d -T backend python -m scripts.run_telegram_bot >/dev/null 2>&1 || true
+    fi
+fi
+
 echo -e "${BLUE}⏳ Đang đợi Backend khởi động và kết nối Database...${NC}"
 for _ in {1..30}; do
-    if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+    if curl -fsS --max-time 2 http://127.0.0.1:8000/health 2>/dev/null | grep -q '"ok"'; then
         break
     fi
     sleep 2
@@ -243,6 +288,7 @@ from sqlalchemy import func, select
 from core.database import AsyncSessionLocal, engine
 from core.security import get_password_hash
 from models.user import User, UserRole
+from models.profile import UserProfile
 
 async def ensure_user():
     email = os.environ['FITAI_INIT_ADMIN_EMAIL'].strip()
@@ -254,6 +300,8 @@ async def ensure_user():
                 if not u:
                     u = User(email=email, hashed_password=get_password_hash(pwd), full_name='FitAI Admin', is_active=True, role=UserRole.USER)
                     s.add(u)
+                    await s.flush()
+                    s.add(UserProfile(user_id=u.id))
     finally:
         await engine.dispose()
 
@@ -265,6 +313,8 @@ asyncio.run(ensure_user())
         docker compose exec -T backend python scripts/import_admin_foods.py --admin-email "$INPUT_ADMIN_EMAIL" --file /app/data/foods/manual/dishes_all.csv --update-existing
         echo -e "${GREEN}✅ Đã tạo tài khoản Admin (${INPUT_ADMIN_EMAIL}) và nạp đủ 70 món ăn!${NC}"
     fi
+else
+    echo -e "${GREEN}✅ Đã có tài khoản Admin (${ADMIN_EMAIL}).${NC}"
 fi
 
 # Kiểm tra dữ liệu RAG trong ChromaDB
@@ -283,8 +333,8 @@ if [ "$CHROMA_COUNT" -eq 0 ] 2>/dev/null; then
     echo ""
     echo -e "${YELLOW}📚 Kho tri thức RAG (ChromaDB) hiện đang trống (0 đoạn).${NC}"
     echo -e "   Việc nạp tài liệu ISSN & WHO (134 đoạn) sẽ gọi Gemini Embedding API."
-    read -r -p "Bạn có muốn nạp tài liệu RAG vào ChromaDB ngay bây giờ không? (Y/n): " RAG_ANS
-    RAG_ANS="${RAG_ANS:-Y}"
+    read -r -p "Bạn có muốn nạp tài liệu RAG vào ChromaDB ngay bây giờ không? (y/N): " RAG_ANS
+    RAG_ANS="${RAG_ANS:-N}"
     if [[ "$RAG_ANS" =~ ^[Yy]$ ]]; then
         docker compose exec -T backend python scripts/ingest_knowledge.py || true
     fi
@@ -309,15 +359,25 @@ open "http://localhost:3000" >/dev/null 2>&1 || true
 echo ""
 echo -e "${YELLOW}Tuỳ chọn nhanh:${NC}"
 echo -e "  - Nhấn ${BOLD}Enter${NC} để đóng cửa sổ này (ứng dụng vẫn tiếp tục chạy ngầm trong Docker)."
+echo -e "  - Gõ ${BOLD}admin${NC} rồi nhấn Enter để cấp quyền Admin cho một email."
 echo -e "  - Gõ ${BOLD}logs${NC} rồi nhấn Enter để xem log trực tiếp."
 echo -e "  - Gõ ${BOLD}stop${NC} rồi nhấn Enter để tắt toàn bộ các container FitAI."
-read -r -p "Lựa chọn của bạn [Enter/logs/stop]: " ACTION_ANS
+read -r -p "Lựa chọn của bạn [Enter/admin/logs/stop]: " ACTION_ANS
+ACTION_ANS="$(echo "$ACTION_ANS" | xargs | tr '[:upper:]' '[:lower:]')"
 
 case "$ACTION_ANS" in
-    logs|LOGS)
+    admin)
+        read -r -p "Nhập email tài khoản cần cấp quyền Admin: " TARGET_EMAIL
+        TARGET_EMAIL="$(echo "$TARGET_EMAIL" | xargs)"
+        if [ -n "$TARGET_EMAIL" ]; then
+            docker compose exec -T backend python scripts/make_admin.py "$TARGET_EMAIL"
+        fi
+        read -r -p "Nhấn Enter để thoát..."
+        ;;
+    logs)
         docker compose logs -f
         ;;
-    stop|STOP)
+    stop)
         echo -e "${YELLOW}🛑 Đang dừng các container FitAI...${NC}"
         docker compose down
         echo -e "${GREEN}✅ Đã dừng toàn bộ dịch vụ.${NC}"
@@ -326,4 +386,3 @@ case "$ACTION_ANS" in
         echo -e "${GREEN}👋 Chúc bạn trải nghiệm FitAI vui vẻ!${NC}"
         ;;
 esac
-

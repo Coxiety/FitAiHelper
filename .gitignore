@@ -122,3 +122,4 @@ data/foods/external/
 
 # Bộ dữ liệu tập luyện thử trên máy phát triển (link tự điền, không commit)
 data/training_dev/
+.neon

@@ -24,10 +24,9 @@ from core.config import settings
 from models.food import Food
 from models.meal_log import MAX_MEAL_GRAMS, MealType
 from services.foods.lookup import (
-    AmbiguousFoodQuery,
     FoodLookupError,
     FoodQueryError,
-    RawOnlyFoodQuery,
+    resolve_best_food,
     search_foods,
 )
 from services.meals import snapshot
@@ -129,21 +128,7 @@ def _extract_json_payload(raw_text: str) -> dict:
 async def _resolve_food_match(db: AsyncSession, query_vi: str) -> tuple[Food | None, str | None]:
     """Tra cứu một món ăn trong bảng foods; xử lý trường hợp đa nghĩa hoặc nguyên liệu sống."""
     try:
-        matches = await search_foods(db, query_vi, limit=3)
-        non_suggestions = [m for m in matches if not m.is_suggestion]
-        chosen = non_suggestions[0] if non_suggestions else (matches[0] if matches else None)
-        if chosen is None:
-            return None, None
-        return chosen.food, chosen.note
-    except AmbiguousFoodQuery as exc:
-        for meaning in exc.meanings:
-            if meaning.foods:
-                return meaning.foods[0], f"từ đa nghĩa → chọn '{meaning.label}'"
-        return None, None
-    except RawOnlyFoodQuery as exc:
-        if exc.raw_foods:
-            return exc.raw_foods[0], "ước tính theo nguyên liệu sống trong DB"
-        return None, None
+        return await resolve_best_food(db, query_vi, search_fn=search_foods)
     except (FoodQueryError, FoodLookupError):
         return None, None
 

@@ -243,3 +243,101 @@ def expand(tokens: list[str]) -> list[tuple[list[str], str, tuple[str, ...]]]:
                     seen.add(tuple(alt))
                     out.append((alt, label, required))
     return out
+
+
+# Thuật ngữ tiếng Việt chưa có trong VN2007 (hoặc cần mở rộng) → từ khoá tiếng Anh USDA SR Legacy.
+# Dùng dạng token không dấu để khớp cả truy vấn có dấu và không dấu.
+VI_EN_PHRASES: dict[tuple[str, ...], tuple[tuple[str, ...], str]] = {
+    ("tom", "hum"): (("lobster",), "tôm hùm → lobster"),
+    ("bao", "ngu"): (("abalone",), "bào ngư → abalone"),
+    ("so", "diep"): (("scallop",), "sò điệp → scallop"),
+    ("bach", "tuoc"): (("octopus",), "bạch tuộc → octopus"),
+    ("ca", "tuyet"): (("cod",), "cá tuyết → cod"),
+    ("ca", "trich"): (("herring",), "cá trích → herring"),
+    ("ca", "tam"): (("sturgeon",), "cá tầm → sturgeon"),
+    ("viet", "quat"): (("blueberries",), "việt quất → blueberries"),
+    ("mam", "xoi"): (("raspberries",), "mâm xôi → raspberries"),
+    ("dau", "tay"): (("strawberries",), "dâu tây → strawberries"),
+    ("bo", "dau", "phong"): (("peanut", "butter"), "bơ đậu phộng → peanut butter"),
+    ("bo", "hanh", "nhan"): (("almond", "butter"), "bơ hạnh nhân → almond butter"),
+    ("hat", "chia"): (("chia", "seeds"), "hạt chia → chia seeds"),
+    ("diem", "mach"): (("quinoa",), "diêm mạch → quinoa"),
+    ("mang", "tay"): (("asparagus",), "măng tây → asparagus"),
+    ("cai", "xoan"): (("kale",), "cải xoăn → kale"),
+    ("cai", "bo", "xoi"): (("spinach",), "cải bó xôi → spinach"),
+    ("atiso",): (("artichoke",), "atiso → artichoke"),
+    ("pho", "mai"): (("cheese",), "phô mai → cheese"),
+    ("thit", "cuu"): (("lamb",), "thịt cừu → lamb"),
+    ("uc", "vit"): (("duck", "breast"), "ức vịt → duck breast"),
+    ("dau", "ga"): (("chickpeas",), "đậu gà → chickpeas"),
+    ("dau", "lang"): (("lentils",), "đậu lăng → lentils"),
+    ("hat", "oc", "cho"): (("walnuts",), "hạt óc chó → walnuts"),
+    ("hat", "de", "cuoi"): (("pistachio",), "hạt dẻ cười → pistachio"),
+    ("hat", "mac", "ca"): (("macadamia",), "hạt mắc ca → macadamia"),
+    ("sua", "hanh", "nhan"): (("almond", "milk"), "sữa hạnh nhân → almond milk"),
+    ("sua", "yen", "mach"): (("oat", "milk"), "sữa yến mạch → oat milk"),
+}
+
+_VI_EN_MODIFIERS: dict[str, str] = {
+    "hap": "cooked",
+    "luoc": "cooked",
+    "nuong": "cooked",
+    "ran": "cooked",
+    "chien": "cooked",
+    "xao": "cooked",
+    "chin": "cooked",
+    "song": "raw",
+    "tuoi": "raw",
+    "kho": "dried",
+    "say": "dried",
+}
+
+# Cụm thành ngữ tiếng Anh dễ bị NMT dịch sát nghĩa → chuẩn hoá về tên Việt trong VN2007
+EN_VI_PHRASES: dict[tuple[str, ...], tuple[tuple[str, ...], str]] = {
+    ("water", "spinach"): (("rau", "muong"), "water spinach → rau muống"),
+    ("morning", "glory"): (("rau", "muong"), "morning glory → rau muống"),
+    ("sweet", "potato"): (("khoai", "lang"), "sweet potato → khoai lang"),
+    ("pork", "belly"): (("thit", "lon", "ba", "chi"), "pork belly → thịt lợn ba chỉ"),
+    ("beef", "noodle", "soup"): (("pho", "bo"), "beef noodle soup → phở bò"),
+}
+
+_EN_VI_MODIFIERS: dict[str, str] = {
+    "cooked": "chin",
+    "boiled": "luoc",
+    "steamed": "hap",
+    "grilled": "nuong",
+    "roasted": "nuong",
+    "fried": "ran",
+    "raw": "song",
+    "fresh": "tuoi",
+    "dried": "kho",
+}
+
+
+def _expand_phrase_table(
+    tokens: list[str],
+    table: dict[tuple[str, ...], tuple[tuple[str, ...], str]],
+    modifiers: dict[str, str],
+) -> list[tuple[list[str], str]]:
+    out: list[tuple[list[str], str]] = []
+    seen = {tuple(tokens)}
+    for src, (dst, label) in sorted(table.items(), key=lambda kv: -len(kv[0])):
+        n = len(src)
+        for i in range(len(tokens) - n + 1):
+            if tuple(tokens[i:i + n]) == src:
+                rest = [modifiers.get(t, t) for t in tokens[:i]] + list(dst) + [
+                    modifiers.get(t, t) for t in tokens[i + n:]
+                ]
+                # Khử trùng token modifier liên tiếp (vd. "hap chin" → "cooked")
+                deduped = list(dict.fromkeys(rest))
+                if tuple(deduped) not in seen:
+                    seen.add(tuple(deduped))
+                    out.append((deduped, label))
+    return out
+
+
+def expand_en(tokens: list[str]) -> list[tuple[list[str], str]]:
+    """Dịch cụm tên thực phẩm Việt ↔ Anh đã duyệt kèm trạng thái nấu."""
+    return _expand_phrase_table(tokens, VI_EN_PHRASES, _VI_EN_MODIFIERS) + _expand_phrase_table(
+        tokens, EN_VI_PHRASES, _EN_VI_MODIFIERS
+    )

@@ -402,3 +402,163 @@ async def test_override_beats_keyword_rule_on_ingest(foods_session):
     await seed(foods_session, foods=ALIAS_FOODS + [food(8056, "Bánh phồng tôm sống", 444, "Shrimp paste")])
     row = (await foods_session.execute(select(Food).where(Food.code == 8056))).scalar_one()
     assert (row.preparation, row.preparation_source) == (FoodPreparation.UNKNOWN, "manual")
+
+
+# ── Dịch Việt → Anh (USDA full), tránh gợi ý nhầm đồ khô & RawOnlyFoodQuery ───
+def test_expand_en_translates_vietnamese_to_usda():
+    from services.foods.aliases import expand_en
+
+    assert expand_en(["tom", "hum"]) == [(["lobster"], "tôm hùm → lobster")]
+    assert expand_en(["tom", "hum", "hap"]) == [(["lobster", "cooked"], "tôm hùm → lobster")]
+    assert expand_en(["tom", "hum", "song"]) == [(["lobster", "raw"], "tôm hùm → lobster")]
+
+
+async def test_suggestions_deprioritize_dried_when_not_requested(foods_session):
+    await seed(foods_session, foods=ALIAS_FOODS)
+    matches = await search_foods(foods_session, "tôm càng")
+    assert matches and all(m.is_suggestion for m in matches)
+    names_got = [m.food.name_vi for m in matches]
+    # "Tôm khô" (DRIED) không được xếp trên "Tôm biển"/"Tôm đồng" khi truy vấn không hỏi đồ khô
+    assert names_got.index("Tôm khô") > names_got.index("Tôm biển")
+    assert names_got.index("Tôm khô") > names_got.index("Tôm đồng")
+
+
+async def test_resolve_best_food_prefers_cooked_over_dried_and_handles_raw_only(foods_session):
+    from services.foods.lookup import resolve_best_food
+    from services.foods.normalize import normalize_search
+    from services.foods.sources import USDA_SR_ID
+
+    await seed(foods_session, foods=ALIAS_FOODS)
+    foods_session.add_all([
+        Food(
+            source_id=USDA_SR_ID,
+            source_ref="174208",
+            name_vi="Crustaceans, lobster, northern, raw",
+            name_en="Crustaceans, lobster, northern, raw",
+            name_search=normalize_search("Crustaceans, lobster, northern, raw"),
+            group_name="Cá và hải sản",
+            energy_kcal=77.0,
+            protein_g=16.52,
+            fat_g=0.75,
+            carb_g=0.0,
+            preparation=FoodPreparation.RAW,
+            preparation_source="auto",
+        ),
+        Food(
+            source_id=USDA_SR_ID,
+            source_ref="174209",
+            name_vi="Crustaceans, lobster, northern, cooked, moist heat",
+            name_en="Crustaceans, lobster, northern, cooked, moist heat",
+            name_search=normalize_search("Crustaceans, lobster, northern, cooked, moist heat"),
+            group_name="Cá và hải sản",
+            energy_kcal=89.0,
+            protein_g=19.0,
+            fat_g=0.86,
+            carb_g=0.0,
+            preparation=FoodPreparation.COOKED,
+            preparation_source="auto",
+        ),
+    ])
+    await foods_session.flush()
+
+    lobster, _ = await resolve_best_food(foods_session, "tôm hùm")
+    assert lobster is not None and lobster.source_ref == "174209"
+
+    lobster_raw, _ = await resolve_best_food(foods_session, "tôm hùm sống")
+    assert lobster_raw is not None and lobster_raw.source_ref == "174208"
+
+    shrimp_fallback, _ = await resolve_best_food(foods_session, "tôm càng")
+    assert shrimp_fallback is not None and shrimp_fallback.name_vi != "Tôm khô"
+
+    xoi, note = await resolve_best_food(foods_session, "xôi")
+    assert xoi is not None and xoi.code in (1001, 1002)
+    assert note and "nguyên liệu sống" in note
+
+
+async def test_vi_en_lobster_on_real_data(db_session):
+    from services.foods.lookup import resolve_best_food
+
+    await _real_names(db_session)
+    matches = await search_foods(db_session, "tôm hùm", limit=5)
+    assert any(m.food.source_ref == "174209" for m in matches)
+    chosen, _ = await resolve_best_food(db_session, "tôm hùm")
+    assert chosen is not None and chosen.source_ref == "174209"
+
+
+def test_nmt_clean_translated_tokens_filters_hallucinations():
+    from services.foods.translator import _clean_translated_tokens
+
+    assert _clean_translated_tokens("vi-en", ["tom", "hum"], "lobster.") == (["lobster"], "lobster")
+    assert _clean_translated_tokens("vi-en", ["hat", "huong", "duong"], "The sunflower.") == (
+        ["sunflower"],
+        "The sunflower",
+    )
+    # Chặn câu giao tiếp / lặp từ vô nghĩa hoặc chỉ còn màu
+    assert _clean_translated_tokens("vi-en", ["ca", "bon"], "I'll be right back.") is None
+    assert _clean_translated_tokens("en-vi", ["water", "spinach"], "Name") is None
+    assert _clean_translated_tokens("vi-en", ["zqmon", "trang"], "White") is None
+    assert _clean_translated_tokens("en-vi", ["chicken", "egg"], "Trứng gà của") == (["trung", "ga"], "Trứng gà của")
+
+
+async def test_search_foods_uses_nmt_fallback_bidirectionally(foods_session, monkeypatch):
+    from services.foods.normalize import normalize_search
+    from services.foods.sources import USDA_SR_ID
+
+    await seed(foods_session, foods=ALIAS_FOODS)
+    foods_session.add(
+        Food(
+            source_id=USDA_SR_ID,
+            source_ref="170562",
+            name_vi="Seeds, sunflower seed kernels, dried",
+            name_en="Seeds, sunflower seed kernels, dried",
+            name_search=normalize_search("Seeds, sunflower seed kernels, dried"),
+            group_name="Hạt và quả hạch",
+            energy_kcal=584.0,
+            protein_g=20.78,
+            fat_g=51.46,
+            carb_g=8.6,
+            preparation=FoodPreparation.DRIED,
+            preparation_source="auto",
+        )
+    )
+    await foods_session.flush()
+
+    async def fake_translate(q: str):
+        if "hướng dương" in q:
+            return [(["sunflower"], "dịch NMT (vi-en): 'hạt hướng dương' → 'sunflower'")]
+        if q.lower() == "sea shrimp":
+            return [(["tom", "bien"], "dịch NMT (en-vi): 'sea shrimp' → 'tôm biển'")]
+        return []
+
+    monkeypatch.setattr("services.foods.lookup.translate_food_query", fake_translate)
+
+    vi_en = await search_foods(foods_session, "hạt hướng dương")
+    assert vi_en and vi_en[0].food.source_ref == "170562"
+    assert "dịch NMT (vi-en)" in (vi_en[0].matched_via or "")
+
+    en_vi = await search_foods(foods_session, "sea shrimp")
+    assert en_vi and en_vi[0].food.code == 8051
+    assert "dịch NMT (en-vi)" in (en_vi[0].matched_via or "")
+
+
+async def test_nmt_real_model_sunflower_on_real_data(db_session):
+    await _real_names(db_session)
+    matches = await search_foods(db_session, "hạt hướng dương", limit=5)
+    assert any("sunflower" in m.food.name_search for m in matches)
+    assert any((m.matched_via or "").startswith("dịch NMT") for m in matches)
+
+
+def test_nmt_rejects_low_confidence_translations(monkeypatch):
+    from services.foods.translator import _translate_sync
+
+    def fake_cached(direction: str, normalized_key: str, raw_query: str):
+        if raw_query == "bơ quả":
+            return "Apple butter.", 0.084
+        if raw_query == "hạt hướng dương":
+            return "sunflower", 0.622
+        return None, 0.0
+
+    monkeypatch.setattr("services.foods.translator._cached_translate", fake_cached)
+    assert _translate_sync("bơ quả") == []
+    res = _translate_sync("hạt hướng dương")
+    assert res and res[0][0] == ["sunflower"] and "0.62" in res[0][1]
