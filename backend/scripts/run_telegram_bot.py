@@ -46,6 +46,7 @@ from services.ai_agents.fitness_advisor import (  # noqa: E402
     fitness_agent,
 )
 from services.foods.lookup import search_foods  # noqa: E402
+from services.intent_classifier import try_fast_route  # noqa: E402
 from services.meal_vision import VisionMealResult, analyze_meal_photo  # noqa: E402
 from services.progress import progress_summary_for_agent  # noqa: E402
 from services.training.progress import training_summary_for_agent  # noqa: E402
@@ -319,44 +320,48 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     history: list[dict[str, str]] = context.user_data.setdefault("history", [])
 
     async with AsyncSessionLocal() as db:
-        res = await db.execute(select(UserProfile).where(UserProfile.user_id == user.id))
-        profile = res.scalar_one_or_none()
-        profile_data = None
-        if profile is not None:
-            profile_data = {
-                "age": profile.age,
-                "gender": profile.gender,
-                "height_cm": profile.height_cm,
-                "weight_kg": profile.weight_kg,
-                "activity_level": profile.activity_level,
-                "fitness_goal": profile.fitness_goal,
-                "dietary_restrictions": profile.dietary_restrictions,
-            }
+        fast_result = await try_fast_route(db, text)
+        if fast_result is not None:
+            reply, _sources = fast_result
+        else:
+            res = await db.execute(select(UserProfile).where(UserProfile.user_id == user.id))
+            profile = res.scalar_one_or_none()
+            profile_data = None
+            if profile is not None:
+                profile_data = {
+                    "age": profile.age,
+                    "gender": profile.gender,
+                    "height_cm": profile.height_cm,
+                    "weight_kg": profile.weight_kg,
+                    "activity_level": profile.activity_level,
+                    "fitness_goal": profile.fitness_goal,
+                    "dietary_restrictions": profile.dietary_restrictions,
+                }
 
-        async def _load_profile():
-            r = await db.execute(select(UserProfile).where(UserProfile.user_id == user.id))
-            return r.scalar_one_or_none()
+            async def _load_profile():
+                r = await db.execute(select(UserProfile).where(UserProfile.user_id == user.id))
+                return r.scalar_one_or_none()
 
-        tool_context = AgentToolContext(
-            load_profile=_load_profile,
-            lookup_food=lambda q: search_foods(db, q),
-            load_daily_summary=lambda day: meal_service.daily_summary(db, user.id, day),
-            load_progress_summary=lambda days: progress_summary_for_agent(db, user.id, days),
-            load_recommendation=lambda exp: recommendation_for_user(db, user.id, exp),
-            load_training_summary=lambda: training_summary_for_agent(db, user.id),
-            log_meal=lambda q, g, mt: log_meal_for_user(db, user.id, q, g, mt),
-            log_body_metric=lambda w, waist: log_body_metric_for_user(db, user.id, w, waist),
-        )
-        try:
-            reply = await fitness_agent.chat(
-                history=history[-10:],
-                user_message=text,
-                profile_data=profile_data,
-                tool_context=tool_context,
+            tool_context = AgentToolContext(
+                load_profile=_load_profile,
+                lookup_food=lambda q: search_foods(db, q),
+                load_daily_summary=lambda day: meal_service.daily_summary(db, user.id, day),
+                load_progress_summary=lambda days: progress_summary_for_agent(db, user.id, days),
+                load_recommendation=lambda exp: recommendation_for_user(db, user.id, exp),
+                load_training_summary=lambda: training_summary_for_agent(db, user.id),
+                log_meal=lambda q, g, mt: log_meal_for_user(db, user.id, q, g, mt),
+                log_body_metric=lambda w, waist: log_body_metric_for_user(db, user.id, w, waist),
             )
-        except ChatAgentException as exc:
-            await update.message.reply_text(f"⚠️ {exc.message}")
-            return
+            try:
+                reply = await fitness_agent.chat(
+                    history=history[-10:],
+                    user_message=text,
+                    profile_data=profile_data,
+                    tool_context=tool_context,
+                )
+            except ChatAgentException as exc:
+                await update.message.reply_text(f"⚠️ {exc.message}")
+                return
 
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": reply})

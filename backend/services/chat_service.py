@@ -11,6 +11,7 @@ from models.profile import UserProfile
 from services.agent_actions import log_body_metric_for_user, log_meal_for_user
 from services.ai_agents.fitness_advisor import AgentToolContext, ChatAgentException, fitness_agent
 from services.foods.lookup import search_foods
+from services.intent_classifier import try_fast_route
 from services.meals import daily_summary
 from services.progress import progress_summary_for_agent
 from services.training.progress import training_summary_for_agent
@@ -86,31 +87,36 @@ class ChatService:
                 "dietary_restrictions": profile.dietary_restrictions,
             }
 
-        # ── Bước 4: Gọi FitnessAdvisorAgent ────────────────────────────────────
-        # Công cụ calc_body_metrics chỉ đọc được hồ sơ của user_id lấy từ JWT;
-        # lookup_food tra bảng foods bằng phiên DB của request (trong SAVEPOINT);
-        # get_daily_summary / get_progress_summary / recommend_program / get_training_summary chỉ đọc dữ liệu
-        # của chính user_id này
-        tool_context = AgentToolContext(
-            load_profile=lambda: self._load_profile(user_id),
-            lookup_food=lambda query: search_foods(self.db, query),
-            load_daily_summary=lambda day: self._load_daily_summary(user_id, day),
-            load_progress_summary=lambda days: self._load_progress_summary(user_id, days),
-            load_recommendation=lambda experience: self._load_recommendation(user_id, experience),
-            load_training_summary=lambda: self._load_training_summary(user_id),
-            log_meal=lambda q, g, mt: log_meal_for_user(self.db, user_id, q, g, mt),
-            log_body_metric=lambda w, waist: log_body_metric_for_user(self.db, user_id, w, waist),
-        )
-        try:
-            ai_reply = await fitness_agent.chat(
-                history=history,
-                user_message=message,
-                profile_data=profile_data,
-                tool_context=tool_context,
+        # ── Bước 4: Intent Classifier Fast-Path (từ chối ngoài phạm vi & tra cứu thực phẩm không cần LLM) ──
+        fast_result = await try_fast_route(self.db, message)
+        if fast_result is not None:
+            ai_reply, sources = fast_result
+        else:
+            # ── Gọi FitnessAdvisorAgent ────────────────────────────────────────
+            # Công cụ calc_body_metrics chỉ đọc được hồ sơ của user_id lấy từ JWT;
+            # lookup_food tra bảng foods bằng phiên DB của request (trong SAVEPOINT);
+            # get_daily_summary / get_progress_summary / recommend_program / get_training_summary chỉ đọc dữ liệu
+            # của chính user_id này
+            tool_context = AgentToolContext(
+                load_profile=lambda: self._load_profile(user_id),
+                lookup_food=lambda query: search_foods(self.db, query),
+                load_daily_summary=lambda day: self._load_daily_summary(user_id, day),
+                load_progress_summary=lambda days: self._load_progress_summary(user_id, days),
+                load_recommendation=lambda experience: self._load_recommendation(user_id, experience),
+                load_training_summary=lambda: self._load_training_summary(user_id),
+                log_meal=lambda q, g, mt: log_meal_for_user(self.db, user_id, q, g, mt),
+                log_body_metric=lambda w, waist: log_body_metric_for_user(self.db, user_id, w, waist),
             )
-        except ChatAgentException as e:
-            raise HTTPException(status_code=e.status_code, detail=e.message)
-        sources = tool_context.sources
+            try:
+                ai_reply = await fitness_agent.chat(
+                    history=history,
+                    user_message=message,
+                    profile_data=profile_data,
+                    tool_context=tool_context,
+                )
+            except ChatAgentException as e:
+                raise HTTPException(status_code=e.status_code, detail=e.message)
+            sources = tool_context.sources
 
         # ── Bước 5: Lưu cả tin user và tin AI trong 1 transaction an toàn ──────
         try:
