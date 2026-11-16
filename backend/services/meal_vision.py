@@ -56,6 +56,11 @@ Quy tắc:
 - `estimated_grams` là số nguyên dương (gram phần ăn được, tối đa 3000).
 """
 
+PHOTO_ACCURACY_DISCLAIMER = (
+    "Do hình ảnh được cung cấp là hình ảnh 2D nên độ chính xác chỉ ở mức tương đối, "
+    "vì vậy xin bạn hãy kiểm tra kỹ thông tin trước khi log."
+)
+
 
 @dataclass
 class DetectedFoodItem:
@@ -77,6 +82,7 @@ class VisionMealResult:
     meal_type: MealType
     items: list[DetectedFoodItem] = field(default_factory=list)
     notes: str = ""
+    disclaimer: str = PHOTO_ACCURACY_DISCLAIMER
 
     @property
     def matched_items(self) -> list[DetectedFoodItem]:

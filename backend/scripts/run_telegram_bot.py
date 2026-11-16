@@ -39,7 +39,7 @@ from models.meal_log import MealType  # noqa: E402
 from models.profile import UserProfile  # noqa: E402
 from models.user import User  # noqa: E402
 from services import meals as meal_service  # noqa: E402
-from services.agent_actions import log_body_metric_for_user, log_meal_for_user  # noqa: E402
+from services.agent_actions import log_body_metric_for_user, log_meal_for_user, log_workout_for_user  # noqa: E402
 from services.ai_agents.fitness_advisor import (  # noqa: E402
     AgentToolContext,
     ChatAgentException,
@@ -101,6 +101,8 @@ def _format_vision_reply(result: VisionMealResult) -> str:
         )
     if result.notes:
         lines.append(f"\n💡 _{result.notes}_")
+    if result.disclaimer:
+        lines.append(f"\n⚠️ {result.disclaimer}")
     return "\n".join(lines)
 
 
@@ -113,7 +115,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text(
             f"Xin chào {name}! Tài khoản FitAI của bạn đã được liên kết.\n\n"
             "📸 Gửi **ảnh bữa ăn** để mình ước lượng calo & lưu nhật ký.\n"
-            "💬 Nhắn **tự nhiên** (vd: 'ghi 150g ức gà bữa trưa', 'hôm nay mình nặng 68kg', 'hôm nay ăn bao nhiêu calo rồi?').\n"
+            "💬 Nhắn **tự nhiên** (vd: 'ghi 150g ức gà bữa trưa', 'chạy bộ 30 phút mức vừa', 'hôm nay mình nặng 68kg', 'hôm nay ăn bao nhiêu calo rồi?').\n"
             "📊 Gõ /today để xem nhanh tổng kết hôm nay."
         )
     else:
@@ -351,6 +353,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 load_training_summary=lambda: training_summary_for_agent(db, user.id),
                 log_meal=lambda q, g, mt: log_meal_for_user(db, user.id, q, g, mt),
                 log_body_metric=lambda w, waist: log_body_metric_for_user(db, user.id, w, waist),
+                log_workout=lambda act, mins, inten, cat, notes: log_workout_for_user(
+                    db, user.id, act, mins, inten, cat, notes
+                ),
             )
             try:
                 reply = await fitness_agent.chat(

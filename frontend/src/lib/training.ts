@@ -79,10 +79,54 @@ export interface TrainingWeekSummary {
   week_start: string;
   week_end: string;
   completed_days: number | null;
+  workout_sessions?: number | null;
   active_dates: number | null;
   total_minutes: number | null;
   days_without_minutes: number | null;
   series: { date: string; completed_days: number | null; minutes: number | null; days_without_minutes: number | null }[];
+}
+
+export type WorkoutLogCategory = "cardio" | "strength" | "mobility" | "sport" | "other";
+export type WorkoutLogIntensity = "light" | "moderate" | "vigorous";
+
+export const WORKOUT_CATEGORY_LABELS: Record<WorkoutLogCategory, string> = {
+  cardio: "Cardio",
+  strength: "Sức mạnh / Gym",
+  mobility: "Giãn cơ / Yoga",
+  sport: "Thể thao",
+  other: "Khác",
+};
+
+export const WORKOUT_INTENSITY_LABELS: Record<WorkoutLogIntensity, string> = {
+  light: "Nhẹ",
+  moderate: "Vừa",
+  vigorous: "Nặng",
+};
+
+export interface WorkoutLogItem {
+  id: string;
+  trained_on: string;
+  activity_name: string;
+  category: WorkoutLogCategory;
+  duration_min: number;
+  intensity: WorkoutLogIntensity;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface WorkoutLogsResponse {
+  start_date: string;
+  end_date: string;
+  items: WorkoutLogItem[];
+}
+
+export interface WorkoutLogCreateInput {
+  activity_name: string;
+  duration_min: number;
+  category: WorkoutLogCategory;
+  intensity: WorkoutLogIntensity;
+  trained_on?: string;
+  notes?: string;
 }
 
 export interface DayItem {
@@ -152,6 +196,15 @@ export const trainingApi = {
   uncomplete: (enrollmentId: string, n: number) =>
     apiClient.delete<Enrollment>(`/training/enrollments/${enrollmentId}/days/${n}`),
   summary: () => apiClient.get<TrainingWeekSummary>("/training/summary"),
+  listWorkouts: (params?: { date?: string; week_start?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.date) qs.set("date", params.date);
+    if (params?.week_start) qs.set("week_start", params.week_start);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return apiClient.get<WorkoutLogsResponse>(`/training/logs${suffix}`);
+  },
+  createWorkout: (data: WorkoutLogCreateInput) => apiClient.post<WorkoutLogItem>("/training/logs", data),
+  deleteWorkout: (id: string) => apiClient.delete<void>(`/training/logs/${id}`),
 };
 
 export type Experience = "regular" | "new";

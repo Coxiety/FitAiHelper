@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth-store";
 import { TrainingShell, useTrainingUnauthorized } from "@/components/training/TrainingShell";
+import { WorkoutLogsSection } from "@/components/training/WorkoutLogsSection";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import {
@@ -64,8 +65,9 @@ export function ProgramList() {
     <TrainingShell>
       <div>
         <h1 className="text-2xl font-bold text-ink">Tập luyện</h1>
-        <p className="text-sm text-muted">Chọn một chương trình, mở từng ngày và bấm “Bắt đầu” để xem video.</p>
+        <p className="text-sm text-muted">Chọn một chương trình hoặc ghi lại các buổi tập tự do trong tuần.</p>
       </div>
+      <WorkoutLogsSection onUnauthorized={onUnauthorized} />
       {rec && programs && programs.length > 0 && (
         <section className="rounded-card border border-brand-200 bg-brand-50 p-5 shadow-card sm:p-6" aria-labelledby="rec-title">
           <h2 id="rec-title" className="text-base font-semibold text-ink">

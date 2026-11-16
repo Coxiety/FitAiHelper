@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.training import ProgramDay, TrainingProgram, TrainingStatus
-from models.training_progress import EnrollmentStatus, ProgramDayCompletion, ProgramEnrollment
+from models.training_progress import EnrollmentStatus, ProgramDayCompletion, ProgramEnrollment, WorkoutLog
 from services import meals as meal_service
 from services.progress import monday_of
 from services.training.catalog import visible_items
@@ -104,33 +104,47 @@ def resolve_week_start(value: date | None, today: date) -> date:
     return value
 
 
-def build_week_summary(week_start: date, rows: list[tuple[date, int | None]]) -> dict:
-    """rows: (completed_on, minutes_done) của mọi ngày đã đánh dấu trong tuần (mọi enrollment).
+def build_week_summary(
+    week_start: date,
+    rows: list[tuple[date, int | None]],
+    workout_rows: list[tuple[date, int]] | None = None,
+) -> dict:
+    """rows: (completed_on, minutes_done) của ngày chương trình; workout_rows: (trained_on, duration_min)
+    của buổi tập tự do trong tuần.
 
-    Không có dữ liệu → null (không phải 0). total_minutes chỉ cộng ngày có minutes_done; null khi không ngày nào có.
+    Không có dữ liệu → null (không phải 0). total_minutes cộng mọi ngày có thời lượng.
     """
     week_end = week_start + timedelta(days=WEEK_DAYS - 1)
+    workouts = workout_rows or []
     series = []
     for i in range(WEEK_DAYS):
         day = week_start + timedelta(days=i)
-        minutes = [m for d, m in rows if d == day]
-        known = [m for m in minutes if m is not None]
+        prog_minutes = [m for d, m in rows if d == day]
+        known_prog = [m for m in prog_minutes if m is not None]
+        free_minutes = [m for d, m in workouts if d == day]
+        all_known = known_prog + free_minutes
         series.append({
             "date": day.isoformat(),
-            "completed_days": len(minutes) or None,
-            "minutes": sum(known) if known else None,
-            "days_without_minutes": (len(minutes) - len(known)) if minutes else None,
+            "completed_days": len(prog_minutes) or None,
+            "minutes": sum(all_known) if all_known else None,
+            "days_without_minutes": (len(prog_minutes) - len(known_prog)) if prog_minutes else None,
         })
     in_week = [(d, m) for d, m in rows if week_start <= d <= week_end]
-    known = [m for _, m in in_week if m is not None]
-    has_data = bool(in_week)
+    free_in_week = [(d, m) for d, m in workouts if week_start <= d <= week_end]
+    known_prog = [m for _, m in in_week if m is not None]
+    all_known = known_prog + [m for _, m in free_in_week]
+    has_program = bool(in_week)
+    has_free = bool(free_in_week)
+    has_any = has_program or has_free
+    active_dates = ({d for d, _ in in_week} | {d for d, _ in free_in_week})
     return {
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
-        "completed_days": len(in_week) if has_data else None,
-        "active_dates": len({d for d, _ in in_week}) if has_data else None,
-        "total_minutes": sum(known) if known else None,
-        "days_without_minutes": (len(in_week) - len(known)) if has_data else None,
+        "completed_days": len(in_week) if has_program else None,
+        "workout_sessions": len(free_in_week) if has_free else None,
+        "active_dates": len(active_dates) if has_any else None,
+        "total_minutes": sum(all_known) if all_known else None,
+        "days_without_minutes": (len(in_week) - len(known_prog)) if has_any else None,
         "series": series,
     }
 
@@ -260,7 +274,7 @@ async def uncomplete_day(db: AsyncSession, user_id: uuid.UUID, enrollment_id: uu
 
 
 async def weekly_summary(db: AsyncSession, user_id: uuid.UUID, week_start: date | None) -> dict:
-    """Tổng hợp tuần (thứ Hai–Chủ nhật, giờ VN) trên MỌI enrollment của người dùng."""
+    """Tổng hợp tuần (thứ Hai–Chủ nhật, giờ VN) gồm cả ngày chương trình và buổi tập tự do."""
     start_day = resolve_week_start(week_start, meal_service.today_vn())
     end_day = start_day + timedelta(days=WEEK_DAYS - 1)
     rows = (await db.execute(
@@ -269,7 +283,12 @@ async def weekly_summary(db: AsyncSession, user_id: uuid.UUID, week_start: date 
         .where(ProgramEnrollment.user_id == user_id,
                ProgramDayCompletion.completed_on >= start_day, ProgramDayCompletion.completed_on <= end_day)
     )).all()
-    return build_week_summary(start_day, [(d, m) for d, m in rows])
+    workout_rows = (await db.execute(
+        select(WorkoutLog.trained_on, WorkoutLog.duration_min)
+        .where(WorkoutLog.user_id == user_id,
+               WorkoutLog.trained_on >= start_day, WorkoutLog.trained_on <= end_day)
+    )).all()
+    return build_week_summary(start_day, [(d, m) for d, m in rows], [(d, m) for d, m in workout_rows])
 
 
 async def training_summary_for_agent(db: AsyncSession, user_id: uuid.UUID) -> dict:
@@ -277,17 +296,18 @@ async def training_summary_for_agent(db: AsyncSession, user_id: uuid.UUID) -> di
     enrollment = await current(db, user_id)
     week = await weekly_summary(db, user_id, None)
     out: dict = {"current_program": None, "this_week": {k: week[k] for k in (
-        "week_start", "week_end", "completed_days", "active_dates", "total_minutes", "days_without_minutes")}}
+        "week_start", "week_end", "completed_days", "workout_sessions", "active_dates",
+        "total_minutes", "days_without_minutes")}}
     if enrollment is None:
         out["current_program_note"] = "Người dùng hiện chưa theo chương trình nào."
     else:
         out["current_program"] = {k: enrollment[k] for k in (
             "program_title", "training_days_done", "training_days_total", "next_day", "available", "message")}
-    if week["completed_days"] is None:
+    if week["active_dates"] is None:
         out["this_week_note"] = "Chưa có dữ liệu tập luyện trong tuần này (không phải 0)."
     elif week["total_minutes"] is None:
         out["this_week_note"] = ("Chưa có dữ liệu thời lượng: các ngày đã đánh dấu đều có bài bắt buộc thiếu "
                                  "thời lượng.")
-    out["minutes_note"] = ("Số phút là người dùng tự đánh dấu (hệ thống không kiểm tra có xem video), chỉ cộng "
-                           "các ngày đủ thời lượng và gồm cả bài không phải aerobic.")
+    out["minutes_note"] = ("Số phút là người dùng tự đánh dấu/ghi nhận (hệ thống không kiểm tra), chỉ cộng "
+                           "các ngày/buổi có đủ thời lượng và gồm cả bài không phải aerobic.")
     return out

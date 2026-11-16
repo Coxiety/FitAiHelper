@@ -19,12 +19,14 @@ def test_build_tools_includes_write_tools_only_when_provided():
     ctx_with_writes = AgentToolContext(
         log_meal=AsyncMock(return_value={"status": "logged"}),
         log_body_metric=AsyncMock(return_value={"status": "created"}),
+        log_workout=AsyncMock(return_value={"status": "logged"}),
     )
     full_tools = build_tools(ctx_with_writes)
     names = {t.name for t in full_tools}
-    assert len(full_tools) == 9
+    assert len(full_tools) == 10
     assert "log_meal" in names
     assert "log_body_metric" in names
+    assert "log_workout" in names
 
 
 @pytest.mark.asyncio
@@ -70,4 +72,30 @@ async def test_analyze_meal_photo_resolves_db_macros():
     assert item.protein_g == 33.8
     assert result.total_kcal == 180.0
     assert result.notes == "Bữa ăn giàu đạm."
+    assert "2D" in result.disclaimer and "trước khi log" in result.disclaimer
+
+
+def test_format_vision_reply_includes_2d_accuracy_disclaimer():
+    from scripts.run_telegram_bot import _format_vision_reply
+    from services.meal_vision import DetectedFoodItem, PHOTO_ACCURACY_DISCLAIMER, VisionMealResult
+
+    result = VisionMealResult(
+        meal_type=MealType.TRUA,
+        items=[
+            DetectedFoodItem(
+                display_name="Cơm trắng",
+                query_vi="cơm trắng",
+                grams=150.0,
+                matched=True,
+                food_id=1,
+                food_name_vi="Cơm trắng",
+                energy_kcal=195.0,
+                protein_g=4.0,
+                fat_g=0.4,
+                carb_g=42.0,
+            )
+        ],
+    )
+    reply = _format_vision_reply(result)
+    assert PHOTO_ACCURACY_DISCLAIMER in reply
 

@@ -7,19 +7,20 @@ import uuid
 from datetime import date
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies.auth import get_current_user
 from api.schemas.training import (
     CurrentEnrollmentOut, EnrollmentOut, ProgramDayOut, ProgramDetailOut, ProgramSummaryOut, StartEnrollmentIn,
-    RecommendationOut, TrainingWeekSummaryOut,
+    RecommendationOut, TrainingWeekSummaryOut, WorkoutLogCreate, WorkoutLogOut, WorkoutLogsOut, WorkoutLogUpdate,
 )
 from core.database import get_db
 from models.user import User
 from services.training import catalog
 from services.training import progress as progress_service
 from services.training import recommend as recommend_service
+from services.training import workouts as workout_service
 
 router = APIRouter(prefix="/training", tags=["Training"])
 
@@ -132,3 +133,84 @@ async def get_training_summary(
         return await progress_service.weekly_summary(db, current_user.id, week_start)
     except progress_service.TrainingDateError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.message)
+
+
+# ── Nhật ký buổi tập tự do ───────────────────────────────────────────────────
+
+@router.post("/logs", response_model=WorkoutLogOut, status_code=status.HTTP_201_CREATED)
+async def create_workout_log(
+    body: WorkoutLogCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        workout = await workout_service.create_workout(
+            db=db,
+            user_id=current_user.id,
+            activity_name=body.activity_name,
+            duration_min=body.duration_min,
+            category=body.category,
+            intensity=body.intensity,
+            trained_on=body.trained_on,
+            notes=body.notes,
+        )
+    except workout_service.WorkoutValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    await db.commit()
+    return workout
+
+
+@router.get("/logs", response_model=WorkoutLogsOut)
+async def list_workout_logs(
+    day: Optional[date] = Query(None, alias="date", description="Lọc theo một ngày YYYY-MM-DD (giờ VN)"),
+    week_start: Optional[date] = Query(None, description="Lọc theo tuần bắt đầu từ thứ Hai YYYY-MM-DD"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        start_day, end_day, items = await workout_service.list_workouts(db, current_user.id, day=day, week_start=week_start)
+    except workout_service.WorkoutValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    return WorkoutLogsOut(start_date=start_day, end_date=end_day, items=items)
+
+
+@router.patch("/logs/{workout_id}", response_model=WorkoutLogOut)
+async def update_workout_log(
+    workout_id: uuid.UUID,
+    body: WorkoutLogUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    clear_notes = "notes" in body.model_fields_set and body.notes is None
+    try:
+        workout = await workout_service.update_workout(
+            db=db,
+            user_id=current_user.id,
+            workout_id=workout_id,
+            activity_name=body.activity_name,
+            duration_min=body.duration_min,
+            category=body.category,
+            intensity=body.intensity,
+            notes=body.notes,
+            clear_notes=clear_notes,
+        )
+    except workout_service.WorkoutNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy buổi tập.")
+    except workout_service.WorkoutValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    await db.commit()
+    return workout
+
+
+@router.delete("/logs/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workout_log(
+    workout_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await workout_service.delete_workout(db, current_user.id, workout_id)
+    except workout_service.WorkoutNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy buổi tập.")
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

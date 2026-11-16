@@ -10,6 +10,7 @@ from models.meal_log import MealType
 from services import meals as meal_service
 from services import progress as progress_service
 from services.foods.lookup import resolve_best_food
+from services.training import workouts as workout_service
 
 
 def _normalize_meal_type(raw: str | None) -> MealType:
@@ -85,5 +86,37 @@ async def log_body_metric_for_user(
         "measured_on": metric.measured_on.isoformat(),
         "weight_kg": metric.weight_kg,
         "waist_cm": metric.waist_cm,
+    }
+
+
+async def log_workout_for_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    activity_name: str,
+    duration_min: int,
+    intensity: str = "moderate",
+    category: str = "other",
+    notes: Optional[str] = None,
+) -> dict:
+    """Ghi nhận một buổi tập tự do hôm nay cho user_id (không ước tính kcal đốt)."""
+    entry = await workout_service.create_workout(
+        db=db,
+        user_id=user_id,
+        activity_name=activity_name,
+        duration_min=int(duration_min),
+        category=workout_service.normalize_workout_category(category),
+        intensity=workout_service.normalize_workout_intensity(intensity),
+        notes=notes,
+    )
+    await db.commit()
+    return {
+        "status": "logged",
+        "workout_id": str(entry.id),
+        "trained_on": entry.trained_on.isoformat(),
+        "activity_name": entry.activity_name,
+        "category": entry.category.value,
+        "duration_min": entry.duration_min,
+        "intensity": entry.intensity.value,
+        "notes": entry.notes,
     }
 

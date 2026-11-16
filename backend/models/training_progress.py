@@ -8,7 +8,7 @@ from datetime import date, datetime
 from enum import Enum
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, UniqueConstraint, func, text,
+    CheckConstraint, Date, DateTime, Enum as SAEnum, ForeignKey, Index, Integer, String, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -75,4 +75,44 @@ class ProgramDayCompletion(Base):
         CheckConstraint(f"minutes_done IS NULL OR (minutes_done >= 0 AND minutes_done <= {MAX_MINUTES_DONE})",
                         name="ck_program_day_completions_minutes"),
         Index("ix_program_day_completions_completed_on", "completed_on"),
+    )
+
+
+class WorkoutCategory(str, Enum):
+    CARDIO = "cardio"
+    STRENGTH = "strength"
+    MOBILITY = "mobility"
+    SPORT = "sport"
+    OTHER = "other"
+
+
+class WorkoutIntensity(str, Enum):
+    LIGHT = "light"
+    MODERATE = "moderate"
+    VIGOROUS = "vigorous"
+
+
+class WorkoutLog(Base):
+    """Nhật ký buổi tập tự do của người dùng (không ước tính kcal tiêu hao)."""
+    __tablename__ = "workout_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    trained_on: Mapped[date] = mapped_column(Date, nullable=False, comment="Ngày tập theo giờ Việt Nam")
+    activity_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[WorkoutCategory] = mapped_column(
+        SAEnum(WorkoutCategory, name="workout_log_category", values_callable=lambda e: [m.value for m in e]),
+        nullable=False, default=WorkoutCategory.OTHER, server_default=WorkoutCategory.OTHER.value)
+    duration_min: Mapped[int] = mapped_column(Integer, nullable=False)
+    intensity: Mapped[WorkoutIntensity] = mapped_column(
+        SAEnum(WorkoutIntensity, name="workout_log_intensity", values_callable=lambda e: [m.value for m in e]),
+        nullable=False, default=WorkoutIntensity.MODERATE, server_default=WorkoutIntensity.MODERATE.value)
+    notes: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"duration_min >= 1 AND duration_min <= {MAX_MINUTES_DONE}", name="ck_workout_logs_duration"),
+        Index("ix_workout_logs_user_trained_on", "user_id", "trained_on"),
     )
