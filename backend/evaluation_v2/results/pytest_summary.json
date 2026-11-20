@@ -1,0 +1,29 @@
+{
+  "headline": "All Targeted & Docker Suites 100% Green (After Fixes)",
+  "suites": [
+    {
+      "name": "Host Full Baseline (pre-fix 4)",
+      "passed": 941
+    },
+    {
+      "name": "Docker Eval/USDA/Seed/Import",
+      "passed": 106
+    },
+    {
+      "name": "Docker Admin/Import/Ingest",
+      "passed": 93
+    },
+    {
+      "name": "Docker Admin Documents (RAG)",
+      "passed": 48
+    },
+    {
+      "name": "Intent Classifier v2",
+      "passed": 33
+    },
+    {
+      "name": "Workout Logs (new)",
+      "passed": 4
+    }
+  ]
+}

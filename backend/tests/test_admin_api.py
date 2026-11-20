@@ -8,7 +8,7 @@ import json
 import re
 import uuid
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -408,7 +408,10 @@ def lookup_then_answer(query):
 
 async def run_lookup_chat(client, headers, query):
     fake = FakeChatModel(lookup_then_answer(query))
-    with patch.object(fitness_agent, "llm", fake):
+    with (
+        patch("services.chat_service.try_fast_route", new=AsyncMock(return_value=None)),
+        patch.object(fitness_agent, "llm", fake),
+    ):
         res = await client.post("/api/v1/chat", headers=headers, json={"message": f"{query} bao nhiêu calo"})
     assert res.status_code == 200, res.text
     tool_output = [m for m in fake.calls[-1]["messages"] if isinstance(m, ToolMessage)][0].content

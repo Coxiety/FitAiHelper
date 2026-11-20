@@ -113,6 +113,7 @@ async def test_get_metrics_profile_complete_success(async_client: AsyncClient):
     assert data["missing_fields"] == []
     assert data["bmi"] == 24.1
     assert data["bmi_category"] == "Bình thường"
+    assert data["bmi_asia_category"] == "Thừa cân"
     assert data["bmr"] == 1800.0
     assert data["tdee"] == 2475.0
     assert data["target_calories"] == 2104
@@ -120,6 +121,19 @@ async def test_get_metrics_profile_complete_success(async_client: AsyncClient):
     assert data["protein_g"] == 156
     assert abs(data["fat_g"] - 58) <= 1
     assert abs(data["carb_g"] - 239) <= 1
+    assert len(data["references"]) >= 7
+    ref_keys = {r["key"] for r in data["references"]}
+    assert {"bmi_global", "bmi_asia", "bmr", "tdee", "target_calories", "macros", "physical_activity"} <= ref_keys
+
+
+@pytest.mark.asyncio
+async def test_get_metrics_references_endpoint(async_client: AsyncClient):
+    """GET /profile/metrics/references trả đầy đủ danh mục căn cứ khoa học."""
+    res = await async_client.get(f"{METRICS_URL}/references")
+    assert res.status_code == 200
+    refs = res.json()
+    assert len(refs) >= 7
+    assert all(r.get("source_title") and r.get("url") and r.get("formula") for r in refs)
 
 
 @pytest.mark.asyncio

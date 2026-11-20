@@ -1,0 +1,15 @@
+﻿query,grams,picked_food,prep,kcal,protein_g,fat_g,carb_g,atwater_kcal,atwater_diff,dried_ok,macro_sum_ok,plausible
+tôm hùm,300.0,"Crustaceans, lobster, northern, cooked, moist heat",cooked,267.0,57.0,2.6,0.0,251.4,15.6,True,True,True
+tôm hùm hấp,300.0,"Crustaceans, lobster, northern, cooked, moist heat",cooked,267.0,57.0,2.6,0.0,251.4,15.6,True,True,True
+tôm khô,100.0,Tôm khô,dried,347.0,75.6,3.8,2.5,346.6,0.4,True,True,True
+ức gà,150.0,"Ức gà nướng chín (thịt, bỏ da)",cooked,247.5,46.5,5.4,0.0,234.6,12.9,True,True,True
+cơm trắng,200.0,"Gạo trắng nấu chín (cơm, không muối)",cooked,260.0,5.4,0.6,55.5,249.0,11.0,True,True,True
+phở bò,500.0,Phở bò (1 tô ≈ 500 g),cooked,379.5,24.5,9.7,47.0,373.3,6.2,True,True,True
+hạt hướng dương,100.0,"Oil, sunflower, linoleic, (approx. 65%)",unknown,884.0,0.0,100.0,0.0,900.0,16.0,True,True,True
+việt quất,150.0,"Blueberries, raw",raw,85.5,1.1,0.5,18.1,81.3,4.2,True,True,True
+cải xoăn,100.0,"Kale, cooked, boiled, drained, with salt",cooked,44.0,2.9,1.2,3.0,34.4,9.6,True,True,True
+sò điệp,150.0,"Mollusks, scallop, (bay and sea), cooked, steamed",cooked,166.5,30.8,1.3,8.1,167.3,0.8,True,True,True
+bạch tuộc,150.0,"Mollusks, octopus, common, cooked, moist heat",cooked,246.0,44.7,3.1,6.6,233.1,12.9,True,True,True
+water spinach,200.0,Rau muống,unknown,50.0,6.4,0.8,4.2,49.6,0.4,True,True,True
+sweet potato,200.0,Khoai lang,unknown,238.0,1.6,0.4,57.0,238.0,0.0,True,True,True
+cá hồi,150.0,"Cá hồi Đại Tây Dương nuôi, nấu chín",cooked,309.0,33.1,18.5,0.0,298.9,10.1,True,True,True

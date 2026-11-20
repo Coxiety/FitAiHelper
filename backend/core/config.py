@@ -89,17 +89,30 @@ class Settings(BaseSettings):
             self.DATABASE_URL = f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@db:5432/{self.POSTGRES_DB}"
         return self
 
+    # Nhà cung cấp LLM chính ("gemini" hoặc "openrouter")
+    LLM_PROVIDER: str = "gemini"
+
     # Google Gemini AI
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
     # Đổi model embedding thì phải chạy lại ingest với --reset (vector cũ không còn so sánh được)
     EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
+    # OpenRouter (OpenAI-compatible API cho chat + tool calling + vision, vd. qwen/qwen3.7-flash)
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "qwen/qwen3.7-flash"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_REASONING_EFFORT: str = "low"
+
     # Dịch máy cục bộ (MarianMT / OPUS-MT) hỗ trợ tra cứu món ăn 2 chiều Việt <-> Anh khi không khớp từ khoá
     FOOD_NMT_ENABLED: bool = True
     FOOD_NMT_VI_EN_MODEL: str = "Helsinki-NLP/opus-mt-vi-en"
     FOOD_NMT_EN_VI_MODEL: str = "Helsinki-NLP/opus-mt-en-vi"
     FOOD_NMT_MIN_CONFIDENCE: float = 0.55
+
+    # Bộ phân loại ý định (BGE-M3 dense embedding + Softmax Logistic Regression, fallback TF-IDF)
+    INTENT_EMBEDDING_ENABLED: bool = True
+    INTENT_EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
     # ChromaDB
     CHROMA_HOST: str = "localhost"

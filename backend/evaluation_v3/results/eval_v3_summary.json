@@ -1,0 +1,20 @@
+{
+  "foods_total": 8372,
+  "foods_by_source": {
+    "VN2007": 509,
+    "ADMIN_MANUAL": 70,
+    "USDA_SR_LEGACY_2018": 7793
+  },
+  "chroma_chunks": 134,
+  "intent_backend": "bge-m3",
+  "intent_v3_accuracy": 0.9808,
+  "intent_v3_macro_f1": 0.9789,
+  "intent_v3_oos_tpr": 1.0,
+  "intent_v3_in_domain_fpr": 0.0,
+  "intent_v3_median_cpu_ms": 40.0,
+  "food_plausibility_pass": "14/14",
+  "fast_path_and_guard_pass": "7/7",
+  "live_agent_pass": "0/7 (SKIPPED_QUOTA: 20 RPD Free Tier)",
+  "fast_path_p50_ms": 523.9,
+  "live_agent_p50_ms": null
+}

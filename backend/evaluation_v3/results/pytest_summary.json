@@ -1,0 +1,21 @@
+{
+  "headline": "Docker BGE-M3 + Chat/AI Suites 100% Green (107/107 post-fix)",
+  "suites": [
+    {
+      "name": "Docker Full Baseline (pre-ChatAPI fix: 2 failed)",
+      "passed": 1018
+    },
+    {
+      "name": "Docker Post-Fix AI/Chat/Intent/Health",
+      "passed": 107
+    },
+    {
+      "name": "Intent Classifier BGE-M3 + TF-IDF Fallback",
+      "passed": 35
+    },
+    {
+      "name": "Chat API Integration (post-fix)",
+      "passed": 14
+    }
+  ]
+}

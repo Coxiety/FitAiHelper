@@ -120,6 +120,34 @@ export const progressApi = {
     apiClient.get<WeeklyReport>(`/progress/weekly-report${weekStart ? `?week_start=${weekStart}` : ""}`),
 };
 
+export interface HealthMetricReference {
+  key: string;
+  metric: string;
+  formula: string;
+  source_title: string;
+  authors_org: string;
+  year: number;
+  identifier: string;
+  url: string;
+  notes: string;
+}
+
+export interface ProfileMetrics {
+  is_complete: boolean;
+  missing_fields: string[];
+  bmi: number | null;
+  bmi_category: string | null;
+  bmi_asia_category: string | null;
+  bmr: number | null;
+  tdee: number | null;
+  target_calories: number | null;
+  calorie_floor_applied: boolean | null;
+  protein_g: number | null;
+  fat_g: number | null;
+  carb_g: number | null;
+  references: HealthMetricReference[];
+}
+
 export const bodyMetricsApi = {
   list: (from?: string, to?: string) => {
     const params = new URLSearchParams();
@@ -134,4 +162,9 @@ export const bodyMetricsApi = {
   upsert: (data: { measured_on: string; weight_kg?: number; waist_cm?: number | null }) =>
     apiClient.post<BodyMetric>("/body-metrics", data),
   remove: (id: string) => apiClient.delete<void>(`/body-metrics/${id}`),
+};
+
+export const profileMetricsApi = {
+  get: () => apiClient.get<ProfileMetrics>("/profile/metrics"),
+  references: () => apiClient.get<HealthMetricReference[]>("/profile/metrics/references"),
 };

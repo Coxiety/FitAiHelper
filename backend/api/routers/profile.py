@@ -6,8 +6,17 @@ from core.database import get_db
 from models.user import User
 from models.profile import UserProfile
 from api.dependencies.auth import get_current_user
-from api.schemas.profile import ProfileOut, ProfileUpdate, ProfileMetricsOut
-from services.metrics_service import REQUIRED_METRICS_FIELDS, calculate_user_metrics
+from api.schemas.profile import (
+    HealthMetricReferenceOut,
+    ProfileMetricsOut,
+    ProfileOut,
+    ProfileUpdate,
+)
+from services.metrics_service import (
+    REQUIRED_METRICS_FIELDS,
+    calculate_user_metrics,
+    get_health_metrics_references,
+)
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -51,6 +60,12 @@ async def update_profile(
     return ProfileOut.from_orm_with_complete(profile)
 
 
+@router.get("/metrics/references", response_model=list[HealthMetricReferenceOut])
+async def get_metrics_references():
+    """Trả về danh mục tài liệu khoa học làm căn cứ cho các chỉ số sức khỏe."""
+    return [HealthMetricReferenceOut(**ref) for ref in get_health_metrics_references()]
+
+
 @router.get("/metrics", response_model=ProfileMetricsOut)
 async def get_profile_metrics(
     current_user: User = Depends(get_current_user),
@@ -62,6 +77,7 @@ async def get_profile_metrics(
     Nếu hồ sơ chưa đủ các trường bắt buộc, trả về HTTP 200 kèm is_complete=False
     và danh sách missing_fields (không trả 400).
     """
+    refs = [HealthMetricReferenceOut(**ref) for ref in get_health_metrics_references()]
     result = await db.execute(
         select(UserProfile).where(UserProfile.user_id == current_user.id)
     )
@@ -70,6 +86,7 @@ async def get_profile_metrics(
         return ProfileMetricsOut(
             is_complete=False,
             missing_fields=REQUIRED_METRICS_FIELDS,
+            references=refs,
         )
 
     missing = [
@@ -79,6 +96,7 @@ async def get_profile_metrics(
         return ProfileMetricsOut(
             is_complete=False,
             missing_fields=missing,
+            references=refs,
         )
 
     # Đầy đủ dữ liệu -> gọi service tính toán
@@ -96,6 +114,7 @@ async def get_profile_metrics(
         missing_fields=[],
         bmi=metrics.bmi,
         bmi_category=metrics.bmi_category,
+        bmi_asia_category=metrics.bmi_asia_category,
         bmr=metrics.bmr,
         tdee=metrics.tdee,
         target_calories=metrics.target_calories,
@@ -103,4 +122,5 @@ async def get_profile_metrics(
         protein_g=metrics.protein_g,
         fat_g=metrics.fat_g,
         carb_g=metrics.carb_g,
+        references=refs,
     )

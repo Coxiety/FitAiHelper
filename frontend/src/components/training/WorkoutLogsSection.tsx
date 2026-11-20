@@ -21,7 +21,13 @@ const INTENSITY_TONE: Record<WorkoutLogIntensity, "neutral" | "brand" | "accent"
 };
 
 /** Nhật ký các buổi tập tự do trong tuần hiện tại trên trang /training. */
-export function WorkoutLogsSection({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function WorkoutLogsSection({
+  onUnauthorized,
+  refreshKey = 0,
+}: {
+  onUnauthorized: () => void;
+  refreshKey?: number;
+}) {
   const [items, setItems] = useState<WorkoutLogItem[] | null>(null);
   const [range, setRange] = useState<{ start: string; end: string } | null>(null);
   const [error, setError] = useState("");
@@ -44,7 +50,7 @@ export function WorkoutLogsSection({ onUnauthorized }: { onUnauthorized: () => v
 
   useEffect(() => {
     loadLogs();
-  }, [loadLogs]);
+  }, [loadLogs, refreshKey]);
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);

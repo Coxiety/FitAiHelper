@@ -35,8 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy application source
 COPY . .
 
-# Non-root user for security
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# Non-root user for security & persistent cache dir for HuggingFace models
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+    && mkdir -p /cache/huggingface && chown -R appuser:appgroup /cache/huggingface
+ENV HF_HOME=/cache/huggingface
 USER appuser
 
 EXPOSE 8000

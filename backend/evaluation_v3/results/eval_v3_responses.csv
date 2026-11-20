@@ -1,0 +1,15 @@
+﻿id,group,mode,http_status,latency_ms,tools,sources_count,passed,notes,reply_preview
+FP01,Fast-Path DB,fast_route,200,4096.4,(fast-path/bge-m3 / 0 LLM),2,True,OK,"🔎 **Kết quả tra cứu nhanh cho ""ức gà"":**  **1. Ức gà sống (thịt, bỏ da) (Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw)** - Trạng thái:"
+FP02,Fast-Path DB,fast_route,200,523.9,(fast-path/bge-m3 / 0 LLM),4,True,OK,"🔎 **Kết quả tra cứu nhanh cho ""tôm hùm"":** *(Chưa có mục trùng hoàn toàn; dưới đây là các thực phẩm có chứa từ khoá:)*  **1. Crustaceans, lobster, northern, raw"
+FP03,Fast-Path DB,fast_route,200,697.2,(fast-path/bge-m3 / 0 LLM),4,True,OK,"🔎 **Kết quả tra cứu nhanh cho ""hạt hướng dương"":** *(Chưa có mục trùng hoàn toàn; dưới đây là các thực phẩm có chứa từ khoá:)*  **1. Oil, sunflower, linoleic, ("
+FP04,Ambiguity Safety,fast_route,200,522.0,(fast-path/bge-m3 / 0 LLM),0,True,OK,"**""bơ""** có nhiều loại khác nhau trong bảng thực phẩm. Bạn muốn tra loại nào? 1. quả bơ: Quả bơ vỏ xanh (nguồn không ghi rõ trạng thái); Quả bơ vỏ tím (nguồn kh"
+FP05,Raw-Only Safety,fast_route,200,593.4,(fast-path/bge-m3 / 0 LLM),0,True,OK,"Bảng thành phần thực phẩm Việt Nam 2007 chưa có **""xôi""** (món đã nấu), chỉ có **gạo nếp SỐNG** (không dùng thay trực tiếp cho món đã nấu): 1. Gạo nếp cái (Glut"
+OOS01,Out-of-Scope Guard,fast_route,200,0.5,(fast-path/bge-m3 / 0 LLM),0,True,OK,"Mình là **FitAI** — trợ lý chuyên về **thể dục, thể hình, dinh dưỡng và nhật ký ăn uống**. Câu hỏi này nằm ngoài phạm vi hỗ trợ của mình nên mình xin phép không"
+OOS02,Out-of-Scope Guard,fast_route,200,0.2,(fast-path/bge-m3 / 0 LLM),0,True,OK,"Mình là **FitAI** — trợ lý chuyên về **thể dục, thể hình, dinh dưỡng và nhật ký ăn uống**. Câu hỏi này nằm ngoài phạm vi hỗ trợ của mình nên mình xin phép không"
+RAG01,Live RAG (WHO),live_agent,503,3161.7,(quota exhausted — 20 RPD Free Tier),0,,SKIPPED_QUOTA (ResourceExhausted 429/503),
+RAG02,Live RAG (ISSN),live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,
+BM01,Live Body Metrics,live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,
+DM01,Live Daily Summary,live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,
+FD01,Live Food Compare,live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,
+WL01,Live Log Workout,live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,
+DP01,Live Training Summary,live_agent,429,,(skipped — Gemini Free Tier 20 RPD exhausted),0,,SKIPPED_QUOTA,

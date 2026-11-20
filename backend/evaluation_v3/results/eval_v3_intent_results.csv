@@ -1,0 +1,53 @@
+﻿query,gold_intent,pred_intent,confidence,correct,latency_ms,slot_query,slot_grams,oos_blocked
+tôm hùm 300g bao nhiêu calo?,food_lookup,food_lookup,0.8994,True,2863.05,tôm hùm,300.0,False
+100g hạt hướng dương bao nhiêu đạm?,food_lookup,food_lookup,0.8964,True,43.67,hạt hướng dương,100.0,False
+trứng vịt lộn 100g có bao nhiêu kcal,food_lookup,food_lookup,0.9409,True,41.67,trứng vịt lộn,100.0,False
+thông tin dinh dưỡng cá thu 150g,food_lookup,food_lookup,0.8712,True,40.56,cá thu,150.0,False
+hạt chia 20g bao nhiêu chất xơ,food_lookup,food_lookup,0.9309,True,39.56,hạt chia,20.0,False
+tra cứu sữa đậu nành,food_lookup,food_lookup,0.8691,True,38.55,sữa đậu nành,,False
+giá trị dinh dưỡng của cua biển,food_lookup,food_lookup,0.7775,True,38.78,cua biển,,False
+250g ức gà luộc bao nhiêu calo?,food_lookup,food_lookup,0.8969,True,40.09,ức gà luộc,250.0,False
+nutrition facts for 150g salmon,food_lookup,food_lookup,0.9428,True,38.84,salmon,150.0,False
+how many calories in 100g cheddar cheese,food_lookup,food_lookup,0.9457,True,39.17,cheddar cheese,100.0,False
+macros for 200g broccoli,food_lookup,food_lookup,0.8998,True,38.7,broccoli,200.0,False
+protein in 180g beef steak,food_lookup,food_lookup,0.8957,True,38.89,beef steak,180.0,False
+ghi 200g cá hồi bữa tối,log_action,log_action,0.7654,True,39.28,,,False
+lưu 120g ức gà vào nhật ký,log_action,log_action,0.8127,True,40.03,,,False
+mới ăn 150g bún bò,log_action,log_action,0.8176,True,39.28,,,False
+thêm 50g yến mạch bữa sáng,log_action,log_action,0.6328,True,38.67,,,False
+hôm nay cân nặng 71.2kg,log_action,log_action,0.7109,True,39.05,,,False
+cập nhật cân nặng 64kg vòng eo 75cm,log_action,log_action,0.7541,True,40.03,,,False
+chạy bộ 30 phút mức vừa,log_action,log_action,0.8731,True,39.15,,,False
+mới tập gym 45 phút,log_action,log_action,0.9482,True,38.14,,,False
+vừa đạp xe 40 phút xong,log_action,log_action,0.9439,True,38.38,,,False
+ghi 50 phút bơi lội hôm nay,log_action,log_action,0.9048,True,38.45,,,False
+log 100g oatmeal for breakfast,log_action,log_action,0.4665,True,39.23,,,False
+log 45 min strength workout,log_action,log_action,0.8831,True,38.41,,,False
+hôm nay tôi nạp được bao nhiêu calo rồi,daily_progress,daily_progress,0.8971,True,39.95,,,False
+xem lượng protein đã ăn hôm nay,daily_progress,daily_progress,0.8496,True,38.18,,,False
+bữa giờ trong 7 ngày qua cân nặng tăng hay giảm,daily_progress,daily_progress,0.3641,True,40.28,,,False
+trung bình 30 ngày gần nhất ăn bao nhiêu kcal,daily_progress,daily_progress,0.7617,True,40.73,,,False
+hôm nay còn được ăn thêm bao nhiêu calo nữa,daily_progress,daily_progress,0.8852,True,43.48,,,False
+tuần này mình tập luyện được bao nhiêu phút rồi,daily_progress,daily_progress,0.7754,True,42.5,,,False
+kiểm tra tổng kết bữa ăn hôm nay,daily_progress,daily_progress,0.8116,True,39.41,,,False
+how much protein did i eat today,daily_progress,daily_progress,0.6964,True,39.69,,,False
+what is my calorie average over the last 7 days,daily_progress,daily_progress,0.8292,True,41.01,my average over last 7 days,,False
+200g cơm trắng ăn buổi tối có sợ mập không,coaching_general,coaching_general,0.4164,True,42.43,,,False
+so sánh thịt bò và ức gà món nào nhiều đạm hơn,coaching_general,coaching_general,0.7598,True,43.44,,,False
+cách tính TDEE cho người tập 4 buổi 1 tuần,coaching_general,coaching_general,0.6653,True,40.55,,,False
+tư vấn lịch tập cho người mới bắt đầu giảm mỡ,coaching_general,coaching_general,0.9169,True,43.12,,,False
+hướng dẫn kỹ thuật deadlift đúng form,coaching_general,coaching_general,0.562,True,47.7,,,False
+who khuyến cáo người lớn nên tập mấy ngày một tuần,coaching_general,coaching_general,0.5576,True,40.84,,,False
+tôi muốn tăng cơ nạc thì nên ăn dư bao nhiêu calo,coaching_general,coaching_general,0.4513,True,40.37,,,False
+chào fitai mình mới dùng app,coaching_general,out_of_scope,0.3426,False,40.15,chào fitai mình mới dùng app,,False
+should i eat banana before cardio,coaching_general,coaching_general,0.6658,True,40.55,,,False
+compare whey protein vs chicken breast,coaching_general,coaching_general,0.5491,True,40.59,,,False
+dự báo thời tiết hà nội cuối tuần này,out_of_scope,out_of_scope,0.7609,True,41.14,,,True
+giá vàng sjc hôm nay tăng hay giảm,out_of_scope,out_of_scope,0.6693,True,39.28,,,True
+viết đoạn code javascript gọi api fetch,out_of_scope,out_of_scope,0.8723,True,39.25,,,True
+chỉ mình cách nấu món thịt kho tàu ngon,out_of_scope,out_of_scope,0.6771,True,40.07,,,True
+làm một bài thơ lục bát về biển,out_of_scope,out_of_scope,0.9209,True,43.0,,,True
+tối nay đội tuyển việt nam đá lúc mấy giờ,out_of_scope,out_of_scope,0.703,True,41.86,,,True
+how to install docker on ubuntu,out_of_scope,out_of_scope,0.7586,True,40.09,how to install docker on ubuntu,,True
+tell me a funny programming joke,out_of_scope,out_of_scope,0.9423,True,39.14,a funny programming joke,,True
+what is the stock price of apple today,out_of_scope,out_of_scope,0.7815,True,38.71,,,True

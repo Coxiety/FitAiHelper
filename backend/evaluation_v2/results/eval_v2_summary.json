@@ -1,0 +1,17 @@
+{
+  "foods_total": 8372,
+  "foods_by_source": {
+    "VN2007": 509,
+    "ADMIN_MANUAL": 70,
+    "USDA_SR_LEGACY_2018": 7793
+  },
+  "chroma_chunks": 134,
+  "intent_v2_accuracy": 0.8654,
+  "intent_v2_macro_f1": 0.8503,
+  "intent_v2_oos_tpr": 0.8889,
+  "intent_v2_in_domain_fpr": 0.0,
+  "food_plausibility_pass": "14/14",
+  "e2e_pass": "14/14",
+  "fast_path_p50_ms": 506.8,
+  "live_agent_p50_ms": 4284.3
+}

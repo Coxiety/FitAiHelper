@@ -76,16 +76,30 @@ class ProfileOut(BaseModel):
         )
 
 
+class HealthMetricReferenceOut(BaseModel):
+    """Tài liệu căn cứ khoa học cho từng chỉ số sức khỏe."""
+    key: str
+    metric: str
+    formula: str
+    source_title: str
+    authors_org: str
+    year: int
+    identifier: str
+    url: str
+    notes: str
+
+
 class ProfileMetricsOut(BaseModel):
     """Schema trả về cho endpoint GET /profile/metrics.
-    
-    Khi hồ sơ đầy đủ (is_complete=True): trả về đầy đủ các chỉ số tính toán.
+
+    Khi hồ sơ đầy đủ (is_complete=True): trả về đầy đủ các chỉ số tính toán + căn cứ khoa học.
     Khi hồ sơ chưa đủ (is_complete=False): trả về missing_fields và các chỉ số là None.
     """
     is_complete: bool
     missing_fields: list[str] = []
     bmi: Optional[float] = None
     bmi_category: Optional[str] = None
+    bmi_asia_category: Optional[str] = None
     bmr: Optional[float] = None
     tdee: Optional[float] = None
     target_calories: Optional[int] = None
@@ -93,3 +107,4 @@ class ProfileMetricsOut(BaseModel):
     protein_g: Optional[int] = None
     fat_g: Optional[int] = None
     carb_g: Optional[int] = None
+    references: list[HealthMetricReferenceOut] = []

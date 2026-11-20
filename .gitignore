@@ -108,14 +108,15 @@ data/knowledge/_review/
 # Tài liệu RAG do quản trị viên tải lên — chỉ giữ .gitkeep
 data/knowledge/uploads/*
 !data/knowledge/uploads/.gitkeep
-# Điểm mount của data/knowledge/uploads bên trong ./backend (Docker tạo khi mount /app/uploads)
-backend/uploads/
 
 # Kết quả đánh giá chatbot (chứa câu trả lời đầy đủ) — chỉ giữ .gitkeep
 data/eval/results/*
 !data/eval/results/.gitkeep
-# Điểm mount của data/eval/results bên trong ./backend (Docker tạo khi mount /app/eval_results)
-backend/eval_results/
+
+# Điểm mount / symlink bên trong ./backend (Docker & run_mac_native tạo)
+backend/data
+backend/uploads
+backend/eval_results
 
 # Dữ liệu thô USDA FoodData Central (45 MB) — chỉ commit file con data/foods/usda_selected.csv
 data/foods/external/

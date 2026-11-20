@@ -21,6 +21,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from services.ai_agents.llm_factory import OpenRouterChatModel
 from models.food import Food
 from models.meal_log import MAX_MEAL_GRAMS, MealType
 from services.foods.lookup import (
@@ -146,19 +147,24 @@ async def analyze_meal_photo(
     caption: str | None = None,
 ) -> VisionMealResult:
     """Nhận diện ảnh món ăn bằng Gemini Vision rồi đối chiếu dinh dưỡng từ PostgreSQL."""
-    if not settings.GOOGLE_API_KEY:
-        raise RuntimeError("Thiếu GOOGLE_API_KEY để nhận diện ảnh.")
+    if settings.LLM_PROVIDER.strip().lower() == "openrouter":
+        if not settings.OPENROUTER_API_KEY:
+            raise RuntimeError("Thiếu OPENROUTER_API_KEY để nhận diện ảnh.")
+        llm = OpenRouterChatModel(temperature=0.1)
+    else:
+        if not settings.GOOGLE_API_KEY:
+            raise RuntimeError("Thiếu GOOGLE_API_KEY để nhận diện ảnh.")
+        llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            google_api_key=settings.GOOGLE_API_KEY,
+            temperature=0.1,
+        )
 
     b64_image = base64.b64encode(image_bytes).decode("ascii")
     prompt_text = VISION_PROMPT
     if caption and caption.strip():
         prompt_text += f"\nGhi chú thêm của người dùng về ảnh: {caption.strip()}"
 
-    llm = ChatGoogleGenerativeAI(
-        model=settings.GEMINI_MODEL,
-        google_api_key=settings.GOOGLE_API_KEY,
-        temperature=0.1,
-    )
     message = HumanMessage(
         content=[
             {"type": "text", "text": prompt_text},

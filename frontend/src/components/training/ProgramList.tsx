@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth-store";
 import { TrainingShell, useTrainingUnauthorized } from "@/components/training/TrainingShell";
+import { GuidedRoutinesSection } from "@/components/training/GuidedRoutinesSection";
 import { WorkoutLogsSection } from "@/components/training/WorkoutLogsSection";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
@@ -35,6 +36,7 @@ export function ProgramList() {
   // Câu trả lời chỉ giữ trong trang (không sửa hồ sơ); gợi ý lỗi thì chỉ ẩn hộp gợi ý
   const [experience, setExperience] = useState<Experience | null>(null);
   const [rec, setRec] = useState<Recommendation | null>(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -65,9 +67,13 @@ export function ProgramList() {
     <TrainingShell>
       <div>
         <h1 className="text-2xl font-bold text-ink">Tập luyện</h1>
-        <p className="text-sm text-muted">Chọn một chương trình hoặc ghi lại các buổi tập tự do trong tuần.</p>
+        <p className="text-sm text-muted">Thực hành hướng dẫn từng bước trực quan, ghi buổi tập tự do hoặc chọn chương trình theo ngày.</p>
       </div>
-      <WorkoutLogsSection onUnauthorized={onUnauthorized} />
+      <GuidedRoutinesSection
+        onWorkoutLogged={() => setLogRefreshKey((k) => k + 1)}
+        onUnauthorized={onUnauthorized}
+      />
+      <WorkoutLogsSection onUnauthorized={onUnauthorized} refreshKey={logRefreshKey} />
       {rec && programs && programs.length > 0 && (
         <section className="rounded-card border border-brand-200 bg-brand-50 p-5 shadow-card sm:p-6" aria-labelledby="rec-title">
           <h2 id="rec-title" className="text-base font-semibold text-ink">

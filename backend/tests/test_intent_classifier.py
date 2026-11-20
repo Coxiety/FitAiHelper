@@ -1,4 +1,4 @@
-"""Unit tests for the local TF-IDF + Logistic Regression Intent Classifier & fast-path lookup."""
+"""Unit tests for the multilingual BGE-M3 + TF-IDF fallback Intent Classifier & fast-path lookup."""
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -16,11 +16,14 @@ from services.intent_classifier import (
     INTENT_LOG_ACTION,
     INTENT_OUT_OF_SCOPE,
     OUT_OF_SCOPE_REPLY,
+    IntentClassifier,
     classify_intent,
     extract_food_lookup_slot,
+    get_intent_backend,
     is_out_of_scope,
     try_fast_food_lookup,
     try_fast_route,
+    warmup_intent_classifier,
 )
 
 
@@ -32,6 +35,9 @@ from services.intent_classifier import (
         ("calories in 200g salmon", INTENT_FOOD_LOOKUP),
         ("ghi 150g ức gà bữa trưa", INTENT_LOG_ACTION),
         ("hôm nay mình nặng 68kg", INTENT_LOG_ACTION),
+        ("chạy bộ 30 phút mức vừa", INTENT_LOG_ACTION),
+        ("mới tập gym 45 phút", INTENT_LOG_ACTION),
+        ("tôm hùm 300g bao nhiêu calo?", INTENT_FOOD_LOOKUP),
         ("hôm nay tôi đã ăn bao nhiêu calo rồi", INTENT_DAILY_PROGRESS),
         ("tiến độ 7 ngày gần nhất", INTENT_DAILY_PROGRESS),
         ("150g ức gà có đủ đạm cho mục tiêu giảm cân không", INTENT_COACHING_GENERAL),
@@ -153,4 +159,24 @@ def test_out_of_scope_never_blocks_in_domain_or_followup_queries(in_domain_text:
 async def test_try_fast_route_rejects_irrelevant_before_db_or_llm():
     res = await try_fast_route(MagicMock(), "Giá vé World Cup bao nhiêu?")
     assert res == (OUT_OF_SCOPE_REPLY, [])
+
+
+def test_tfidf_fallback_when_embedding_disabled_or_unavailable():
+    clf_tfidf = IntentClassifier(use_embedding=False)
+    assert clf_tfidf.backend_name == "tfidf"
+    assert clf_tfidf.predict("150g ức gà bao nhiêu calo?").intent == INTENT_FOOD_LOOKUP
+    assert clf_tfidf.predict("Giá vé World Cup bao nhiêu?").intent == INTENT_OUT_OF_SCOPE
+
+    with patch("services.intent_classifier._load_embedding_encoder", return_value=None):
+        clf_unavailable = IntentClassifier(use_embedding=True)
+        assert clf_unavailable.warmup() == "tfidf"
+        assert clf_unavailable.predict("ghi 150g ức gà bữa trưa").intent == INTENT_LOG_ACTION
+
+
+def test_bge_m3_backend_active_and_generalizes_cross_lingual():
+    backend = warmup_intent_classifier()
+    assert backend == "bge-m3"
+    assert get_intent_backend() == "bge-m3"
+    assert classify_intent("how much protein did i eat today").intent == INTENT_DAILY_PROGRESS
+    assert classify_intent("hướng dẫn kỹ thuật deadlift đúng form").intent == INTENT_COACHING_GENERAL
 

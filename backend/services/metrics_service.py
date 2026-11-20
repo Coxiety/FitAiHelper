@@ -66,6 +66,7 @@ CALORIES_PER_GRAM_CARB = 4     # 1g Carb = 4 kcal
 class BodyMetricsResult:
     bmi: float
     bmi_category: str
+    bmi_asia_category: str
     bmr: float
     tdee: float
     target_calories: int
@@ -75,8 +76,106 @@ class BodyMetricsResult:
     carb_g: int
 
 
+# ── 7. Danh mục căn cứ tài liệu khoa học (dùng cho API & giao diện trực quan) ──
+HEALTH_METRICS_REFERENCES: tuple[dict[str, str | int], ...] = (
+    {
+        "key": "bmi_global",
+        "metric": "BMI (Chuẩn WHO Quốc tế)",
+        "formula": "BMI = Cân nặng (kg) / [Chiều cao (m)]² (<18.5 Thiếu cân; 18.5–24.9 Bình thường; 25.0–29.9 Thừa cân; ≥30 Béo phì)",
+        "source_title": "Obesity: Preventing and Managing the Global Epidemic (WHO Technical Report Series 894)",
+        "authors_org": "World Health Organization (WHO)",
+        "year": 2000,
+        "identifier": "WHO TRS 894",
+        "url": "https://www.who.int/publications/i/item/9241208945",
+        "notes": "Ngưỡng phân loại BMI chuẩn quốc tế cho người trưởng thành.",
+    },
+    {
+        "key": "bmi_asia",
+        "metric": "BMI (Chuẩn WHO Châu Á – Thái Bình Dương)",
+        "formula": "<18.5 Thiếu cân; 18.5–22.9 Bình thường; 23.0–24.9 Thừa cân; ≥25.0 Béo phì",
+        "source_title": "The Asia-Pacific Perspective: Redefining Obesity and Its Treatment",
+        "authors_org": "WHO Regional Office for the Western Pacific (WPRO) / IASO / IOTF",
+        "year": 2000,
+        "identifier": "ISBN 978-0957708211",
+        "url": "https://apps.who.int/iris/handle/10665/206936",
+        "notes": "Khuyến nghị tham khảo cho người châu Á/Việt Nam do nguy cơ chuyển hóa xuất hiện ở ngưỡng BMI thấp hơn.",
+    },
+    {
+        "key": "bmr",
+        "metric": "BMR (Mifflin-St Jeor)",
+        "formula": "10 × kg + 6.25 × cm − 5 × tuổi + c (Nam: c = +5, Nữ: c = −161)",
+        "source_title": "A new predictive equation for resting energy expenditure in healthy individuals",
+        "authors_org": "Mifflin M.D., St Jeor S.T. et al. — Am J Clin Nutr 51(2):241–247",
+        "year": 1990,
+        "identifier": "DOI 10.1093/ajcn/51.2.241",
+        "url": "https://doi.org/10.1093/ajcn/51.2.241",
+        "notes": "Với giới tính 'other', hệ thống dùng giá trị trung bình kỹ thuật c = −78 (không phải hằng số lâm sàng gốc).",
+    },
+    {
+        "key": "tdee",
+        "metric": "TDEE (Tổng tiêu hao năng lượng ngày)",
+        "formula": "TDEE = BMR × Hệ số vận động (1.2 / 1.375 / 1.55 / 1.725 / 1.9)",
+        "source_title": "Human Energy Requirements: Report of a Joint FAO/WHO/UNU Expert Consultation",
+        "authors_org": "FAO / WHO / UNU (Food and Nutrition Technical Report Series No. 1)",
+        "year": 2004,
+        "identifier": "ISBN 978-92-5-105212-9",
+        "url": "https://www.fao.org/4/y5686e/y5686e00.htm",
+        "notes": "Cơ sở sinh lý TEE = BMR × PAL (FAO PAL: 1.40–1.69, 1.70–1.99, 2.00–2.40); 5 mức 1.2–1.9 là thang quy ước thực hành phổ biến.",
+    },
+    {
+        "key": "target_calories",
+        "metric": "Calo mục tiêu & Ngưỡng sàn an toàn",
+        "formula": "Giảm cân: TDEE × 0.85; Tăng cơ: TDEE × 1.10; Sàn an toàn: ≥1,200 kcal (nữ) / ≥1,500 kcal (nam)",
+        "source_title": "Healthy Weight Loss & Dietary Guidelines (Calorie Floors)",
+        "authors_org": "Harvard Health Publishing / NIH NIDDK",
+        "year": 2024,
+        "identifier": "Clinical Safe Floor 1200/1500 kcal",
+        "url": "https://www.health.harvard.edu/staying-healthy/calorie-counting-made-easy",
+        "notes": "Không hạ calo dưới ngưỡng sàn khi không có giám sát y tế; tỷ lệ ±10–15% giúp giảm cân/tăng cơ bền vững.",
+    },
+    {
+        "key": "macros",
+        "metric": "Phân bổ Macro (Protein, Fat, Carb)",
+        "formula": "Protein: 1.6–2.0 g/kg; Fat: 25% kcal mục tiêu; Carb: phần calo còn lại (Atwater 4-9-4 kcal/g)",
+        "source_title": "ISSN Position Stand: Diets and Body Composition & National Academies DRI AMDR",
+        "authors_org": "Aragon A.A. et al. (ISSN, 2017) & National Academies / IOM",
+        "year": 2017,
+        "identifier": "DOI 10.1186/s12970-017-0174-y",
+        "url": "https://doi.org/10.1186/s12970-017-0174-y",
+        "notes": "ISSN khuyến nghị 1.4–2.0+ g/kg protein cho người tập luyện; AMDR khuyến nghị Fat 20–35% và Carb 45–65% tổng năng lượng.",
+    },
+    {
+        "key": "physical_activity",
+        "metric": "Khuyến nghị vận động cơ bản",
+        "formula": "150–300 phút/tuần cường độ vừa (hoặc 75–150 phút mạnh) + ≥2 ngày/tuần tập sức mạnh",
+        "source_title": "WHO Guidelines on Physical Activity and Sedentary Behaviour",
+        "authors_org": "World Health Organization (WHO)",
+        "year": 2020,
+        "identifier": "ISBN 978-92-4-001512-8",
+        "url": "https://www.who.int/publications/i/item/9789240015128",
+        "notes": "Tài liệu gốc đã có trong kho tri thức FitAI (data/knowledge/raw/who_physical_activity_sedentary_2020_en.pdf).",
+    },
+)
+
+
+def get_health_metrics_references() -> list[dict[str, str | int]]:
+    """Trả về bản sao danh sách căn cứ khoa học của các chỉ số sức khỏe."""
+    return [dict(item) for item in HEALTH_METRICS_REFERENCES]
+
+
+def calculate_bmi_asia_category(bmi: float) -> str:
+    """Phân loại BMI theo ngưỡng WHO Châu Á – Thái Bình Dương (WPRO/IDI 2000)."""
+    if bmi < 18.5:
+        return "Thiếu cân"
+    if bmi < 23.0:
+        return "Bình thường"
+    if bmi < 25.0:
+        return "Thừa cân"
+    return "Béo phì"
+
+
 def calculate_bmi(height_cm: float, weight_kg: float) -> tuple[float, str]:
-    """Tính chỉ số BMI và phân loại theo chuẩn WHO.
+    """Tính chỉ số BMI và phân loại theo chuẩn WHO Quốc tế.
 
     BMI = cân nặng (kg) / chiều cao (m)^2
     """
@@ -222,6 +321,7 @@ def calculate_user_metrics(
     return BodyMetricsResult(
         bmi=bmi,
         bmi_category=bmi_category,
+        bmi_asia_category=calculate_bmi_asia_category(bmi),
         bmr=bmr,
         tdee=tdee,
         target_calories=target_calories,
@@ -266,6 +366,7 @@ def profile_metrics_summary(profile) -> dict:
         "missing_fields": [],
         "bmi": m.bmi,
         "bmi_category": m.bmi_category,
+        "bmi_asia_category": m.bmi_asia_category,
         "bmr": m.bmr,
         "tdee": m.tdee,
         "target_calories": m.target_calories,

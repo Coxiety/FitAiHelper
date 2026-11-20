@@ -1,23 +1,33 @@
-"""Bộ phân loại ý định (Intent Classifier) gọn nhẹ & Fast-Path tra cứu thực phẩm.
+"""Bộ phân loại ý định (Intent Classifier) song ngữ Việt–Anh & Fast-Path tra cứu thực phẩm.
 
 Mục tiêu:
-- Khi người dùng chỉ hỏi thông tin dinh dưỡng / calo / macro của MỘT thực phẩm cụ thể
-  (vd. "150g ức gà bao nhiêu calo?", "calo cơm trắng", "avocado nutrition"), mô hình
-  TF-IDF + Softmax Logistic Regression (NumPy) phân loại ý định `food_lookup` với
-  độ tin cậy cao, tách `(food_query, grams)` và tra thẳng PostgreSQL — KHÔNG gọi LLM
-  (độ trễ ~10-30 ms, 0 token, trích dẫn nguồn chuẩn).
-- Mọi câu hỏi ghép, so sánh, tư vấn, ghi nhật ký, hoặc câu không chắc chắn đều rơi
-  về `FitnessAdvisorAgent` (Gemini + tool calling) như bình thường.
+- Sử dụng encoder ngữ nghĩa đa ngữ đóng băng (`BAAI/bge-m3`, CLS pooling + chuẩn hoá L2)
+  kết hợp lớp đầu ra Softmax Multinomial Logistic Regression (NumPy) để hiểu đồng nghĩa và
+  câu hỏi song ngữ Việt ↔ Anh mà không cần thêm nhiều câu mẫu thủ công hay fine-tune GPU.
+- Tự động fallback sang TF-IDF + Softmax Logistic Regression khi tắt embedding hoặc môi trường
+  thiếu model/RAM, giúp test nhẹ và hệ thống luôn sẵn sàng.
+- Khi câu hỏi là tra cứu dinh dưỡng MỘT thực phẩm cụ thể với độ tin cậy cao, tách `(food_query, grams)`
+  và tra thẳng PostgreSQL — KHÔNG gọi LLM; các câu ghép, so sánh, tư vấn, ghi nhật ký rơi về
+  `FitnessAdvisorAgent` (Gemini + tool calling).
 """
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import logging
+import os
 import re
+import tempfile
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Iterable
+from pathlib import Path
+from threading import Lock
+from typing import Any, Iterable
 
 import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.config import settings
 
 from services.ai_agents.fitness_advisor import (
     preparation_label,
@@ -54,6 +64,13 @@ INTENT_OUT_OF_SCOPE = "out_of_scope"
 
 FAST_PATH_CONFIDENCE_THRESHOLD = 0.65
 OUT_OF_SCOPE_CONFIDENCE_THRESHOLD = 0.48
+EMBEDDING_OUT_OF_SCOPE_CONFIDENCE_THRESHOLD = 0.55
+
+_EMBEDDING_MAX_LENGTH = 128
+_EMBEDDING_HEAD_LR = 2.0
+_EMBEDDING_HEAD_REG = 5e-4
+_EMBEDDING_HEAD_STEPS = 500
+_PRED_CACHE_MAX = 256
 
 OUT_OF_SCOPE_REPLY = (
     "Mình là **FitAI** — trợ lý chuyên về **thể dục, thể hình, dinh dưỡng và nhật ký ăn uống**. "
@@ -69,7 +86,8 @@ _IN_DOMAIN_GUARD_RE = re.compile(
     r"can nang|chieu cao|vong eo|bmi|bmr|tdee|body fat|"
     r"giam can|tang can|tang co|giam mo|giu dang|diet|nutrition|weight|fitness|gym|"
     r"tap luyen|chuong trinh|bai tap|the duc|the hinh|van dong|cardio|squat|deadlift|pushup|"
-    r"workout|training|exercise|health|suc khoe|who|issn|nasm|usda"
+    r"chay bo|dap xe|boi loi|yoga|gym|workout|training|exercise|health|suc khoe|who|issn|nasm|usda|"
+    r"xin chao|chao fitai|fitai|chon muc"
     r")\b"
 )
 
@@ -83,6 +101,15 @@ _EXPLICIT_OFF_TOPIC_RE = re.compile(
     r"cach nau|cong thuc nau|nau an ngon|"
     r"weather|forecast|world cup|ticket price|write a poem|poem|poetry|joke|stock price|lottery|"
     r"programming|recipe|how to cook|movie|song lyrics"
+    r")\b"
+)
+
+# Từ khoá xác nhận đúng là câu hỏi tra cứu dinh dưỡng/calo thực phẩm (tránh chặn câu hỏi nối tiếp dạng "200g món X?")
+_FOOD_LOOKUP_CUE_RE = re.compile(
+    r"\b(?:"
+    r"calo|kcal|calories|calorie|protein|dam|carb|carbs|glucid|lipid|fat|xo|fiber|macro|macros|"
+    r"chat dam|chat beo|chat xo|tinh bot|nang luong|dinh duong|gia tri dinh duong|"
+    r"thong tin dinh duong|thanh phan dinh duong|tra cuu|tim thuc pham|nutrition|food details|bn"
     r")\b"
 )
 
@@ -122,6 +149,12 @@ TRAINING_SAMPLES: tuple[tuple[str, str], ...] = (
     ("log 150g chicken breast for lunch", INTENT_LOG_ACTION),
     ("record weight 67kg today", INTENT_LOG_ACTION),
     ("nhập cân nặng 65 kg", INTENT_LOG_ACTION),
+    ("chạy bộ 30 phút mức vừa", INTENT_LOG_ACTION),
+    ("hôm nay tập gym 45 phút", INTENT_LOG_ACTION),
+    ("mới tập chân 50 phút xong", INTENT_LOG_ACTION),
+    ("vừa đạp xe 40 phút", INTENT_LOG_ACTION),
+    ("ghi nhận bơi lội 30 phút", INTENT_LOG_ACTION),
+    ("log 40 min cycling moderate", INTENT_LOG_ACTION),
     # ── daily_progress ──
     ("hôm nay tôi đã ăn bao nhiêu calo rồi", INTENT_DAILY_PROGRESS),
     ("tổng kết dinh dưỡng hôm nay", INTENT_DAILY_PROGRESS),
@@ -149,8 +182,8 @@ TRAINING_SAMPLES: tuple[tuple[str, str], ...] = (
     ("giá vé world cup bao nhiêu", INTENT_OUT_OF_SCOPE),
     ("viết giúp tôi một bài thơ về mùa thu", INTENT_OUT_OF_SCOPE),
     ("thời tiết hôm nay ở sài gòn thế nào", INTENT_OUT_OF_SCOPE),
-    ("hướng dẫn tôi cách nấu phở bò ngon", INTENT_OUT_OF_SCOPE),
-    ("công thức nấu bún bò huế chuẩn vị", INTENT_OUT_OF_SCOPE),
+    ("hướng dẫn tôi cách nấu canh chua cá lóc ngon", INTENT_OUT_OF_SCOPE),
+    ("công thức nấu bún riêu cua chuẩn vị", INTENT_OUT_OF_SCOPE),
     ("kể cho mình nghe một câu chuyện cười", INTENT_OUT_OF_SCOPE),
     ("viết code python sắp xếp mảng giúp tôi", INTENT_OUT_OF_SCOPE),
     ("sửa lỗi javascript react giúp mình", INTENT_OUT_OF_SCOPE),
@@ -175,6 +208,7 @@ GUARD_BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\b(muc tieu|giam can|tang can|tang co|giam mo|tdee|bmr|bmi|goal|lose weight|bulk|cut)\b"),
     re.compile(r"\b(hom nay|hom qua|tuan nay|thang nay|tien do|nhat ky|tong ket|today|yesterday|progress)\b"),
     re.compile(r"\b(tap luyen|chuong trinh|bai tap|workout|program|training)\b"),
+    re.compile(r"\b(chay bo|dap xe|boi loi|tap gym|vua tap|moi tap|da tap|phut|minutes|mins)\b"),
     re.compile(r"\b(hay la|hoac|versus|vs)\b"),
 )
 
@@ -274,22 +308,133 @@ def _tokenize_for_classifier(text: str) -> list[str]:
     return unigrams + bigrams
 
 
+_ENCODER_LOCK = Lock()
+_ENCODERS: dict[str, tuple[Any, Any] | None] = {}
+
+
+def _fit_softmax_head(
+    X: np.ndarray,
+    Y: np.ndarray,
+    *,
+    lr: float,
+    reg: float,
+    steps: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Huấn luyện đầu phân loại Softmax Logistic Regression (NumPy) bằng gradient descent."""
+    n_docs, n_feat = X.shape
+    n_cls = Y.shape[1]
+    W = np.zeros((n_feat, n_cls), dtype=np.float64)
+    b = np.zeros(n_cls, dtype=np.float64)
+    for _ in range(steps):
+        logits = X @ W + b
+        logits -= logits.max(axis=1, keepdims=True)
+        exp_logits = np.exp(logits)
+        probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
+        diff = (probs - Y) / n_docs
+        W -= lr * (X.T @ diff + reg * W)
+        b -= lr * diff.sum(axis=0)
+    return W, b
+
+
+def _predict_from_logits(logits: np.ndarray, labels: list[str]) -> IntentPrediction:
+    shifted = logits - logits.max()
+    exp_l = np.exp(shifted)
+    probs_arr = exp_l / exp_l.sum()
+    best_idx = int(np.argmax(probs_arr))
+    probs = {lbl: float(probs_arr[i]) for i, lbl in enumerate(labels)}
+    return IntentPrediction(
+        intent=labels[best_idx],
+        confidence=float(probs_arr[best_idx]),
+        probs=probs,
+    )
+
+
+def _load_embedding_encoder(model_id: str) -> tuple[Any, Any] | None:
+    """Nạp lười tokenizer + encoder đa ngữ (mặc định BAAI/bge-m3), ưu tiên cache cục bộ."""
+    if not settings.INTENT_EMBEDDING_ENABLED or not model_id.strip():
+        return None
+    with _ENCODER_LOCK:
+        if model_id in _ENCODERS:
+            return _ENCODERS[model_id]
+        try:
+            from transformers import AutoModel, AutoTokenizer
+
+            try:
+                tok = AutoTokenizer.from_pretrained(model_id, local_files_only=True)
+                mod = AutoModel.from_pretrained(model_id, local_files_only=True)
+            except OSError:
+                tok = AutoTokenizer.from_pretrained(model_id)
+                mod = AutoModel.from_pretrained(model_id)
+            mod.eval()
+            _ENCODERS[model_id] = (tok, mod)
+            logger.info("Loaded intent embedding encoder '%s'", model_id)
+        except Exception as exc:  # noqa: BLE001 — tự động rơi về TF-IDF khi thiếu model/mạng/RAM
+            logger.warning("Intent embedding encoder '%s' unavailable (%s); using TF-IDF fallback", model_id, type(exc).__name__)
+            _ENCODERS[model_id] = None
+        return _ENCODERS[model_id]
+
+
+def _encode_texts(texts: list[str], tok: Any, mod: Any) -> np.ndarray:
+    """Mã hoá câu thành vector chuẩn hoá L2 theo CLS pooling của BGE-M3."""
+    import torch
+    import torch.nn.functional as F
+
+    with torch.inference_mode():
+        enc = tok(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=_EMBEDDING_MAX_LENGTH,
+            return_tensors="pt",
+        )
+        out = mod(**enc)
+        emb = out.last_hidden_state[:, 0]
+        emb = F.normalize(emb, p=2, dim=-1)
+        return emb.cpu().numpy().astype(np.float64)
+
+
+def _head_cache_dir() -> Path:
+    hf_home = os.environ.get("HF_HOME", "").strip()
+    if hf_home:
+        return Path(hf_home) / "fitai_intent_heads"
+    home_dir = Path.home()
+    if home_dir.is_dir() and os.access(home_dir, os.W_OK):
+        return home_dir / ".cache" / "huggingface" / "fitai_intent_heads"
+    return Path(tempfile.gettempdir()) / "fitai_intent_heads"
+
+
+def _head_cache_path(model_id: str, docs: list[tuple[str, str]]) -> Path:
+    h = hashlib.sha256()
+    h.update(f"{model_id}|{_EMBEDDING_HEAD_LR}|{_EMBEDDING_HEAD_REG}|{_EMBEDDING_HEAD_STEPS}\n".encode("utf-8"))
+    for text, label in docs:
+        h.update(f"{label}\t{text}\n".encode("utf-8"))
+    return _head_cache_dir() / f"head_{h.hexdigest()[:16]}.npz"
+
+
 class IntentClassifier:
-    """Bộ phân loại ý định TF-IDF + Softmax Multinomial Logistic Regression (NumPy)."""
+    """Bộ phân loại ý định đa ngữ: BGE-M3 (đóng băng) + Softmax Logistic Regression, fallback TF-IDF."""
 
-    def __init__(self, samples: Iterable[tuple[str, str]] = TRAINING_SAMPLES) -> None:
-        docs = list(samples)
-        self.labels = sorted({label for _, label in docs})
+    def __init__(
+        self,
+        samples: Iterable[tuple[str, str]] = TRAINING_SAMPLES,
+        *,
+        use_embedding: bool = True,
+        model_id: str | None = None,
+    ) -> None:
+        self._docs = list(samples)
+        self.labels = sorted({label for _, label in self._docs})
         label_to_idx = {lbl: i for i, lbl in enumerate(self.labels)}
+        self._Y = np.eye(len(self.labels), dtype=np.float64)[
+            np.array([label_to_idx[lbl] for _, lbl in self._docs], dtype=np.int64)
+        ]
 
-        tokenized = [_tokenize_for_classifier(text) for text, _ in docs]
+        # Luôn khởi tạo sẵn TF-IDF (<2 ms) làm tầng dự phòng tức thời
+        tokenized = [_tokenize_for_classifier(text) for text, _ in self._docs]
         vocab_list = sorted({tok for toks in tokenized for tok in toks})
         self.vocab = {tok: i for i, tok in enumerate(vocab_list)}
 
-        n_docs = len(docs)
+        n_docs = len(self._docs)
         n_feat = len(self.vocab)
-        n_cls = len(self.labels)
-
         df = np.zeros(n_feat, dtype=np.float64)
         tf = np.zeros((n_docs, n_feat), dtype=np.float64)
         for i, toks in enumerate(tokenized):
@@ -299,26 +444,23 @@ class IntentClassifier:
                 df[idx] += 1.0
 
         self.idf = np.log((1.0 + n_docs) / (1.0 + df)) + 1.0
-        X = self._featurize_matrix(tf)
-        y_idx = np.array([label_to_idx[lbl] for _, lbl in docs], dtype=np.int64)
-        Y = np.eye(n_cls, dtype=np.float64)[y_idx]
+        X_tfidf = self._featurize_matrix(tf)
+        self.W, self.b = _fit_softmax_head(X_tfidf, self._Y, lr=0.8, reg=1e-3, steps=350)
 
-        # Huấn luyện Softmax Regression nhanh với L2 regularization
-        W = np.zeros((n_feat, n_cls), dtype=np.float64)
-        b = np.zeros(n_cls, dtype=np.float64)
-        lr = 0.8
-        reg = 1e-3
-        for _ in range(350):
-            logits = X @ W + b
-            logits -= logits.max(axis=1, keepdims=True)
-            exp_logits = np.exp(logits)
-            probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
-            diff = (probs - Y) / n_docs
-            W -= lr * (X.T @ diff + reg * W)
-            b -= lr * diff.sum(axis=0)
+        self._use_embedding = use_embedding
+        self._model_id = (model_id or settings.INTENT_EMBEDDING_MODEL).strip()
+        self._lock = Lock()
+        self._embedding_attempted = False
+        self._emb_pair: tuple[Any, Any] | None = None
+        self._emb_W: np.ndarray | None = None
+        self._emb_b: np.ndarray | None = None
+        self._pred_cache: OrderedDict[str, IntentPrediction] = OrderedDict()
 
-        self.W = W
-        self.b = b
+    @property
+    def backend_name(self) -> str:
+        if self._emb_pair is not None and self._emb_W is not None and self._emb_b is not None:
+            return "bge-m3"
+        return "tfidf"
 
     def _featurize_matrix(self, tf: np.ndarray) -> np.ndarray:
         tfidf = tf * self.idf
@@ -326,7 +468,76 @@ class IntentClassifier:
         norms[norms == 0] = 1.0
         return tfidf / norms
 
-    def predict(self, text: str) -> IntentPrediction:
+    def _ensure_embedding_head(self) -> bool:
+        if not self._use_embedding or not settings.INTENT_EMBEDDING_ENABLED:
+            return False
+        if self._emb_W is not None and self._emb_pair is not None:
+            return True
+        if self._embedding_attempted:
+            return False
+
+        with self._lock:
+            if self._emb_W is not None and self._emb_pair is not None:
+                return True
+            if self._embedding_attempted:
+                return False
+            self._embedding_attempted = True
+
+            pair = _load_embedding_encoder(self._model_id)
+            if pair is None:
+                return False
+
+            cache_file = _head_cache_path(self._model_id, self._docs)
+            if cache_file.is_file():
+                try:
+                    data = np.load(cache_file, allow_pickle=False)
+                    W_cached = data["W"]
+                    b_cached = data["b"]
+                    labels_cached = data["labels"].tolist()
+                    if labels_cached == self.labels and W_cached.shape[1] == len(self.labels):
+                        self._emb_pair = pair
+                        self._emb_W = W_cached
+                        self._emb_b = b_cached
+                        self._pred_cache.clear()
+                        return True
+                except Exception as exc:  # noqa: BLE001 — hỏng file cache thì tính lại sạch
+                    logger.warning("Failed reading intent head cache (%s); recomputing", type(exc).__name__)
+
+            tok, mod = pair
+            X_emb = _encode_texts([text for text, _ in self._docs], tok, mod)
+            W_emb, b_emb = _fit_softmax_head(
+                X_emb,
+                self._Y,
+                lr=_EMBEDDING_HEAD_LR,
+                reg=_EMBEDDING_HEAD_REG,
+                steps=_EMBEDDING_HEAD_STEPS,
+            )
+            self._emb_pair = pair
+            self._emb_W = W_emb
+            self._emb_b = b_emb
+            self._pred_cache.clear()
+
+            try:
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                tmp_fd, tmp_name = tempfile.mkstemp(dir=str(cache_file.parent), suffix=".npz")
+                os.close(tmp_fd)
+                np.savez(
+                    tmp_name,
+                    W=W_emb,
+                    b=b_emb,
+                    labels=np.array(self.labels),
+                )
+                os.replace(tmp_name, cache_file)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not persist intent head cache: %s", type(exc).__name__)
+            return True
+
+    def warmup(self) -> str:
+        """Khởi tạo trước encoder BGE-M3 (nếu bật) và trả tên backend đang hoạt động."""
+        self._ensure_embedding_head()
+        return self.backend_name
+
+    def _tfidf_predict(self, text: str) -> IntentPrediction:
         tf = np.zeros((1, len(self.vocab)), dtype=np.float64)
         for tok in _tokenize_for_classifier(text):
             idx = self.vocab.get(tok)
@@ -334,17 +545,31 @@ class IntentClassifier:
                 tf[0, idx] += 1.0
         X = self._featurize_matrix(tf)
         logits = (X @ self.W + self.b)[0]
-        logits -= logits.max()
-        exp_l = np.exp(logits)
-        probs_arr = exp_l / exp_l.sum()
+        return _predict_from_logits(logits, self.labels)
 
-        best_idx = int(np.argmax(probs_arr))
-        probs = {lbl: float(probs_arr[i]) for i, lbl in enumerate(self.labels)}
-        return IntentPrediction(
-            intent=self.labels[best_idx],
-            confidence=float(probs_arr[best_idx]),
-            probs=probs,
-        )
+    def predict(self, text: str) -> IntentPrediction:
+        raw = (text or "").strip()
+        with self._lock:
+            cached = self._pred_cache.get(raw)
+            if cached is not None:
+                self._pred_cache.move_to_end(raw)
+                return cached
+
+        use_emb = self._ensure_embedding_head()
+        if use_emb and self._emb_pair is not None and self._emb_W is not None and self._emb_b is not None:
+            tok, mod = self._emb_pair
+            X_emb = _encode_texts([raw], tok, mod)
+            logits = (X_emb @ self._emb_W + self._emb_b)[0]
+            pred = _predict_from_logits(logits, self.labels)
+        else:
+            pred = self._tfidf_predict(raw)
+
+        with self._lock:
+            self._pred_cache[raw] = pred
+            self._pred_cache.move_to_end(raw)
+            if len(self._pred_cache) > _PRED_CACHE_MAX:
+                self._pred_cache.popitem(last=False)
+        return pred
 
 
 _CLASSIFIER = IntentClassifier()
@@ -352,6 +577,14 @@ _CLASSIFIER = IntentClassifier()
 
 def classify_intent(text: str) -> IntentPrediction:
     return _CLASSIFIER.predict(text)
+
+
+def get_intent_backend() -> str:
+    return _CLASSIFIER.backend_name
+
+
+def warmup_intent_classifier() -> str:
+    return _CLASSIFIER.warmup()
 
 
 def extract_food_lookup_slot(text: str) -> FoodLookupSlot | None:
@@ -455,7 +688,11 @@ async def try_fast_food_lookup(db: AsyncSession, message: str) -> tuple[str, lis
     Trả `(reply_text, sources)` khi xử lý xong trực tiếp từ DB;
     trả `None` để chuyển tiếp cho `FitnessAdvisorAgent` (LLM).
     """
-    pred = classify_intent(message)
+    norm = normalize_search(message or "")
+    if not _FOOD_LOOKUP_CUE_RE.search(norm):
+        return None
+
+    pred = await asyncio.to_thread(classify_intent, message)
     if pred.intent != INTENT_FOOD_LOOKUP or pred.confidence < FAST_PATH_CONFIDENCE_THRESHOLD:
         return None
 
@@ -492,7 +729,12 @@ async def try_fast_food_lookup(db: AsyncSession, message: str) -> tuple[str, lis
         # Không tìm thấy trong DB → nhường LLM xử lý / gợi ý linh hoạt
         return None
 
-    sources = [citation(m.food) for m in matches if m.is_exact]
+    if all(m.is_suggestion for m in matches):
+        sources: list[dict] = []
+    else:
+        exact = [m for m in matches if m.is_exact]
+        displayed = exact[:4] if exact else matches[:4]
+        sources = [citation(m.food) for m in displayed]
     reply = format_fast_food_reply(slot.query, matches, grams)
     logger.info("Intent fast-path handled food_lookup (confidence=%.2f)", pred.confidence)
     return reply, sources
@@ -508,8 +750,16 @@ def is_out_of_scope(message: str) -> bool:
         return False
     if _EXPLICIT_OFF_TOPIC_RE.search(norm):
         return True
+    # Không dùng classifier chặn các câu quá ngắn (< 5 từ) chưa rõ ngữ cảnh (vd. câu hỏi tiếp nối / tin nhắn ngắn)
+    if len(norm.split()) < 5:
+        return False
     pred = classify_intent(raw)
-    return pred.intent == INTENT_OUT_OF_SCOPE and pred.confidence >= OUT_OF_SCOPE_CONFIDENCE_THRESHOLD
+    threshold = (
+        EMBEDDING_OUT_OF_SCOPE_CONFIDENCE_THRESHOLD
+        if _CLASSIFIER.backend_name == "bge-m3"
+        else OUT_OF_SCOPE_CONFIDENCE_THRESHOLD
+    )
+    return pred.intent == INTENT_OUT_OF_SCOPE and pred.confidence >= threshold
 
 
 async def try_fast_route(db: AsyncSession, message: str) -> tuple[str, list[dict]] | None:
@@ -518,7 +768,7 @@ async def try_fast_route(db: AsyncSession, message: str) -> tuple[str, list[dict
     2) Tra cứu nhanh dinh dưỡng thực phẩm (`food_lookup`, PostgreSQL trực tiếp, 0 LLM token).
     3) Còn lại trả `None` để chuyển cho `FitnessAdvisorAgent`.
     """
-    if is_out_of_scope(message):
+    if await asyncio.to_thread(is_out_of_scope, message):
         logger.info("Intent classifier blocked out_of_scope query before LLM")
         return OUT_OF_SCOPE_REPLY, []
     return await try_fast_food_lookup(db, message)

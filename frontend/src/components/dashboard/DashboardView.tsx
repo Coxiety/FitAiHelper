@@ -16,14 +16,17 @@ import {
   bodyMetricsApi,
   formatNumber,
   fullDate,
+  profileMetricsApi,
   progressApi,
   type BodyMetric,
+  type ProfileMetrics,
   type Progress,
   type ProgressDays,
   type WeeklyReport,
 } from "@/lib/progress";
 import { BodyMetricsPanel } from "@/components/dashboard/BodyMetricsPanel";
 import { CalorieChart } from "@/components/dashboard/CalorieChart";
+import { HealthMetricsCard } from "@/components/dashboard/HealthMetricsCard";
 import { ProfileInvite, TodayStats } from "@/components/dashboard/TodayCard";
 import { WeeklyReportCard } from "@/components/dashboard/WeeklyReportCard";
 import { TrainingWeekCard } from "@/components/dashboard/TrainingWeekCard";
@@ -88,6 +91,7 @@ export function DashboardView() {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [today, setToday] = useState<DailySummary | null>(null);
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
+  const [healthMetrics, setHealthMetrics] = useState<ProfileMetrics | null>(null);
   const [weekStart, setWeekStart] = useState(() => addDays(mondayOf(todayVN()), -7));
   const [weekly, setWeekly] = useState<WeeklyReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,15 +130,17 @@ export function DashboardView() {
       setLoading(true);
       setError("");
       try {
-        const [p, s, m] = await Promise.all([
+        const [p, s, m, hm] = await Promise.all([
           progressApi.get(range),
           mealsApi.summary(todayVN()),
           bodyMetricsApi.list(),
+          profileMetricsApi.get(),
         ]);
         if (seq !== loadSeq.current) return;
         setProgress(p);
         setToday(s);
         setMetrics(m.items);
+        setHealthMetrics(hm);
       } catch (err: any) {
         if (seq !== loadSeq.current) return;
         if (err?.status === 401) return handleUnauthorized();
@@ -311,6 +317,9 @@ export function DashboardView() {
             )}
           </div>
         </div>
+
+        {/* ── HÀNG GIỮA: Chỉ số Sức khỏe & Căn cứ Tài liệu Khoa học ────── */}
+        {healthMetrics && <HealthMetricsCard metrics={healthMetrics} />}
 
         {/* ── HÀNG DƯỚI: Cân nặng, Ghi số đo, Báo cáo tuần, Tập luyện ────── */}
         <div className="grid items-stretch gap-6 lg:grid-cols-2">

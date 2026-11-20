@@ -32,6 +32,7 @@ from pydantic.v1 import ValidationError as ValidationErrorV1
 from decimal import ROUND_HALF_UP, Decimal
 
 from core.config import settings
+from services.ai_agents.llm_factory import build_chat_llm
 from services.foods.lookup import (
     AmbiguousFoodQuery,
     FoodLookupError,
@@ -655,15 +656,10 @@ def _response_text(response: Any) -> str:
 
 
 class FitnessAdvisorAgent:
-    """Agent sử dụng mô hình Google Gemini và tool calling để tư vấn thể dục và dinh dưỡng."""
+    """Agent sử dụng Google Gemini hoặc OpenRouter và tool calling để tư vấn thể dục và dinh dưỡng."""
 
     def __init__(self) -> None:
-        self.llm = ChatGoogleGenerativeAI(
-            model=settings.GEMINI_MODEL,
-            google_api_key=settings.GOOGLE_API_KEY,
-            temperature=0.3,
-            convert_system_message_to_human=True,
-        )
+        self.llm = build_chat_llm(temperature=0.3)
 
     async def chat(
         self,

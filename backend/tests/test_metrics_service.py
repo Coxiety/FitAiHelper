@@ -156,3 +156,25 @@ def test_invalid_inputs_raise_errors():
 
     with pytest.raises(ValueError, match="Mục tiêu không hợp lệ"):
         calculate_target_calories(tdee=2000, fitness_goal="invalid_goal", gender="male")
+
+
+def test_bmi_asia_categories_and_references():
+    """Kiểm tra phân loại BMI WHO Châu Á (WPRO/IDI 2000) và danh mục tài liệu căn cứ."""
+    from services.metrics_service import calculate_bmi_asia_category, get_health_metrics_references
+
+    assert calculate_bmi_asia_category(17.9) == "Thiếu cân"
+    assert calculate_bmi_asia_category(22.0) == "Bình thường"
+    assert calculate_bmi_asia_category(24.1) == "Thừa cân"
+    assert calculate_bmi_asia_category(26.1) == "Béo phì"
+
+    refs = get_health_metrics_references()
+    assert len(refs) >= 7
+    assert {r["key"] for r in refs} >= {
+        "bmi_global",
+        "bmi_asia",
+        "bmr",
+        "tdee",
+        "target_calories",
+        "macros",
+        "physical_activity",
+    }
